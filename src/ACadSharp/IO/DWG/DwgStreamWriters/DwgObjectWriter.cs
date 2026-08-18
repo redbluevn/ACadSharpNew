@@ -472,7 +472,7 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		this._writer.Main.HandleReference(cadObject);
 
 		//Extended object data, if any
-		this.writeExtendedData(cadObject.ExtendedData);
+		this.writeExtendedData(cadObject, cadObject.ExtendedData);
 	}
 
 	private void writeCommonEntityData(Entity entity)
@@ -1061,7 +1061,7 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		}
 	}
 
-	private void writeExtendedData(ExtendedDataDictionary data)
+	private void writeExtendedData(CadObject owner, ExtendedDataDictionary data)
 	{
 		if (this.WriteXData)
 		{
@@ -1070,9 +1070,35 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			{
 				this.writeExtendedDataEntry(item.Key, item.Value);
 			}
+
+			this.writeVisualStyleObjectVersion(owner, data);
 		}
 
 		this._writer.WriteBitShort(0);
+	}
+
+	/// <summary>
+	/// Every VISUALSTYLE that AutoCAD writes before R2013 carries the extended data
+	/// <c>ACAD / AcDbSavedByObjectVersion / 0</c>. A drawing whose visual styles lack it is refused
+	/// as an invalid file, so add the record when the object does not carry it already.
+	/// </summary>
+	private void writeVisualStyleObjectVersion(CadObject owner, ExtendedDataDictionary data)
+	{
+		if (this.R2013Plus || owner is not VisualStyle || data.ContainsKeyName(AppId.DefaultName))
+		{
+			return;
+		}
+
+		if (!this._document.AppIds.TryGetValue(AppId.DefaultName, out AppId app))
+		{
+			return;
+		}
+
+		this.writeExtendedDataEntry(app, new ExtendedData(new ExtendedDataRecord[]
+		{
+			new ExtendedDataString("AcDbSavedByObjectVersion"),
+			new ExtendedDataInteger16(0),
+		}));
 	}
 
 	private void writeExtendedDataEntry(AppId app, ExtendedData entry)

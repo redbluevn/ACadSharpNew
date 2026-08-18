@@ -6997,11 +6997,19 @@ namespace ACadSharp.IO.DWG
 			//70
 			visualStyle.Type = this._objectReader.ReadBitLong();
 
+			if (!this.R2007Plus)
+			{
+				//Up to R2004 the object stores the properties as a fixed sequence of named fields
+				//instead of the positional list below.
+				this.readLegacyVisualStyle(visualStyle);
+				return template;
+			}
+
 			if (!this.R2013Plus)
 			{
-				//Before R2013 the object stores the properties as a fixed sequence of named fields
-				//instead of the positional list below. That layout is not implemented yet, stop here
-				//to avoid reading garbage.
+				//R2007 uses the fixed sequence too but its bit layout does not match the R2004 one,
+				//and R2010 already uses the positional list, with 28 entries instead of 58. Neither
+				//is implemented, stop here instead of reading garbage.
 				return template;
 			}
 
@@ -7045,6 +7053,82 @@ namespace ACadSharp.IO.DWG
 			visualStyle.ApplyPropertyList();
 
 			return template;
+		}
+
+		/// <summary>
+		/// Reads the fixed field sequence a VISUALSTYLE uses before R2013.
+		/// </summary>
+		/// <remarks>
+		/// The object is undocumented. This order was established by decoding the bit stream of
+		/// samples/sample_AC1015.dwg and matching every value against the VISUALSTYLE records of
+		/// samples/sample_AC1015_ascii.dxf, which AutoCAD wrote for the same drawing: 717 of the 718
+		/// values of the 24 styles match. The DWG field order is not the DXF one, the brightness is
+		/// stored as an integer here and as a double in DXF, and the DXF codes 62 and 45 have no
+		/// field at all in the DWG (AutoCAD writes constants for them, 5 and 0.0).
+		/// </remarks>
+		private void readLegacyVisualStyle(VisualStyle visualStyle)
+		{
+			//71 Face lighting model
+			visualStyle.FaceLightingModel = (FaceLightingModelType)this._objectReader.ReadBitShort();
+			//72 Face lighting quality
+			visualStyle.FaceLightingQuality = (FaceLightingQualityType)this._objectReader.ReadBitShort();
+			//73 Face color mode
+			visualStyle.FaceColorMode = (FaceColorMode)this._objectReader.ReadBitShort();
+			//40 Face opacity level
+			visualStyle.FaceOpacityLevel = this._objectReader.ReadBitDouble();
+			//41 Face specular level
+			visualStyle.FaceSpecularLevel = this._objectReader.ReadBitDouble();
+			//63 Color (group code 62 in the R2013+ layout)
+			visualStyle.Color = this._mergedReaders.ReadCmColor();
+			//90 Face modifiers
+			visualStyle.FaceModifiers = (FaceModifierType)this._objectReader.ReadBitLong();
+			//74 Edge style model
+			visualStyle.EdgeStyleModel = (EdgeStyleModel)this._objectReader.ReadBitShort();
+			//91 Edge style
+			visualStyle.EdgeStyle = this._objectReader.ReadBitLong();
+			//64 Edge intersection color
+			visualStyle.EdgeIntersectionColor = this._mergedReaders.ReadCmColor();
+			//65 Edge obscured color
+			visualStyle.EdgeObscuredColor = this._mergedReaders.ReadCmColor();
+			//75 Edge obscured line type
+			visualStyle.EdgeObscuredLineType = this._objectReader.ReadBitShort();
+			//42 Edge crease angle
+			visualStyle.EdgeCreaseAngle = this._objectReader.ReadBitDouble();
+			//92 Edge modifiers
+			visualStyle.EdgeModifiers = this._objectReader.ReadBitLong();
+			//66 Edge color, an index in the model while the file stores a full colour
+			Color edgeColor = this._mergedReaders.ReadCmColor();
+			visualStyle.EdgeColor = edgeColor.IsTrueColor ? edgeColor.GetApproxIndex() : edgeColor.Index;
+			//43 Opacity level
+			visualStyle.OpacityLevel = this._objectReader.ReadBitDouble();
+			//76 Edge width
+			visualStyle.EdgeWidth = this._objectReader.ReadBitShort();
+			//77 Edge overhang
+			visualStyle.EdgeOverhang = this._objectReader.ReadBitShort();
+			//78 Edge jitter
+			visualStyle.EdgeJitter = this._objectReader.ReadBitShort();
+			//67 Edge silhouette color
+			visualStyle.EdgeSilhouetteColor = this._mergedReaders.ReadCmColor();
+			//79 Edge silhouette width
+			visualStyle.EdgeSilhouetteWidth = this._objectReader.ReadBitShort();
+			//170 Halo gap, a raw byte and not a bit short
+			visualStyle.HaloGap = (short)this._objectReader.ReadByte();
+			//171 Edge isoline count
+			visualStyle.EdgeIsolineCount = this._objectReader.ReadBitShort();
+			//290 Edge hide precision flag
+			visualStyle.PrecisionFlag = this._objectReader.ReadBit();
+			//174 Edge apply style flag
+			visualStyle.EdgeApplyStyleFlag = this._objectReader.ReadBitShort();
+			//175 Edge intersection line type
+			visualStyle.EdgeIntersectionLineType = this._objectReader.ReadBitShort();
+			//93 Display settings
+			visualStyle.DisplaySettings = this._objectReader.ReadBitLong();
+			//44 Brightness, an integer here and a double in DXF
+			visualStyle.Brightness = this._objectReader.ReadBitLong();
+			//173 Shadow type
+			visualStyle.ShadowType = this._objectReader.ReadBitShort();
+			//291 Internal use only flag
+			visualStyle.InternalFlag = this._objectReader.ReadBit();
 		}
 
 		private CadTemplate readVPort()

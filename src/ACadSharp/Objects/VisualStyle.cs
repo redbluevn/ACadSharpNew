@@ -305,7 +305,10 @@ public class VisualStyle : NonGraphicalObject, IDxfClassDefined
 		this.EdgeIntersectionLineType = this.Properties[12].AsInt();
 		this.EdgeCreaseAngle = this.Properties[13].AsDouble();
 		this.EdgeModifiers = this.Properties[14].AsInt();
-		this.EdgeColor = this.Properties[15].AsColor().Index;
+		//EdgeColor is an index while the entry can hold a true colour; keep the closest index
+		//so the value stays inside the 0..257 range a colour index accepts.
+		Color edgeColor = this.Properties[15].AsColor();
+		this.EdgeColor = edgeColor.IsTrueColor ? edgeColor.GetApproxIndex() : edgeColor.Index;
 		this.OpacityLevel = this.Properties[16].AsDouble();
 		this.EdgeWidth = this.Properties[17].AsInt();
 		this.EdgeOverhang = this.Properties[18].AsInt();
