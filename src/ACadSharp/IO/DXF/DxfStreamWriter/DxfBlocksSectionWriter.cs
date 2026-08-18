@@ -34,10 +34,6 @@ namespace ACadSharp.IO.DXF
 
 			this._writer.Write(DxfCode.Subclass, DxfSubclassMarker.BlockBegin);
 
-			if (!string.IsNullOrEmpty(block.XRefPath))
-			{
-				this._writer.Write(1, block.XRefPath, map);
-			}
 			this._writer.Write(2, block.Name, map);
 			this._writer.Write(70, (short)block.Flags, map);
 
@@ -49,7 +45,17 @@ namespace ACadSharp.IO.DXF
 			this._writer.Write(10, block.BasePoint, map);
 
 			this._writer.Write(3, block.Name, map);
-			this._writer.Write(4, block.Comments, map);
+
+			//The order and the presence of these two is what AutoCAD writes: the xref path always,
+			//empty when there is none, and the description only when the block has one. Putting the
+			//path before the name and always writing a code 4 made AutoCAD read the name twice over
+			//and report "Invalid anonymous name" for every anonymous block in the drawing.
+			this._writer.Write(1, block.XRefPath ?? string.Empty, map);
+
+			if (!string.IsNullOrEmpty(block.Comments))
+			{
+				this._writer.Write(4, block.Comments, map);
+			}
 		}
 
 		private void processEntities(BlockRecord b)

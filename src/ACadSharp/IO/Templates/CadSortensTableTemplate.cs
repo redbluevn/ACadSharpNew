@@ -21,7 +21,11 @@ namespace ACadSharp.IO.Templates
 
 			if (builder.TryGetCadObject(this.BlockOwnerHandle, out CadObject owner))
 			{
-				// Not always a block
+				//Not always a block: a drawing can hold sort tables owned by a dictionary, and
+				//AutoCAD writes and audits those without complaint. Keep whatever the file says so
+				//the writers can put the same reference back.
+				this.CadObject.BlockOwnerReference = owner;
+
 				if (owner is BlockRecord record)
 				{
 					this.CadObject.BlockOwner = record;
@@ -29,11 +33,6 @@ namespace ACadSharp.IO.Templates
 				else if (owner is null)
 				{
 					builder.Notify($"Block owner for SortEntitiesTable {this.CadObject.Handle} not found", NotificationType.Warning);
-					return;
-				}
-				else
-				{
-					builder.Notify($"Block owner for SortEntitiesTable {this.CadObject.Handle} is not a block {owner.GetType().FullName} | {owner.Handle}", NotificationType.Warning);
 					return;
 				}
 			}

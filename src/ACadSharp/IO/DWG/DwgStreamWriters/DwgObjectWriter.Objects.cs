@@ -2116,7 +2116,7 @@ internal partial class DwgObjectWriter : DwgSectionIO
 	private void writeSortEntitiesTable(SortEntitiesTable sortEntitiesTable)
 	{
 		//parenthandle (soft pointer)
-		this._writer.HandleReference(DwgReferenceType.SoftPointer, sortEntitiesTable.BlockOwner);
+		this._writer.HandleReference(DwgReferenceType.SoftPointer, sortEntitiesTable.BlockOwnerReference ?? sortEntitiesTable.BlockOwner);
 
 		//Common:
 		//Numentries BL number of entries
