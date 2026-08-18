@@ -2124,7 +2124,12 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		//Text alignment BS 170 Top left = 1, top center = 2, top right = 3, middle
 		//left = 4, middle center = 5, middle right = 6,
 		//bottom left = 7, bottom center = 8, bottom right = 9
-		this._writer.WriteBitShort((short)style.CellAlignment);
+		//R2007 and newer keep the same value in Alignment, so a style that comes from such a file
+		//has CellAlignment unset; writing the 0 makes AutoCAD report a damaged table style.
+		short alignment = style.CellAlignment == TableStyle.CellAlignmentType.None
+			? (short)style.Alignment
+			: (short)style.CellAlignment;
+		this._writer.WriteBitShort(alignment);
 		//Text color CMC 62
 		this._writer.WriteCmColor(style.TextColor, this.R2004Pre);
 		//Fill color CMC 63
