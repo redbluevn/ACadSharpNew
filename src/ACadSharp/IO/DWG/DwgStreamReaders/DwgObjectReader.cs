@@ -6999,19 +6999,11 @@ namespace ACadSharp.IO.DWG
 			//70
 			visualStyle.Type = this._objectReader.ReadBitLong();
 
-			if (!this.R2007Plus)
+			if (!this.R2010Plus)
 			{
-				//Up to R2004 the object stores the properties as a fixed sequence of named fields
+				//Up to R2007 the object stores the properties as a fixed sequence of named fields
 				//instead of the positional list below.
 				this.readLegacyVisualStyle(visualStyle);
-				return template;
-			}
-
-			if (!this.R2013Plus)
-			{
-				//R2007 uses the fixed sequence too but its bit layout does not match the R2004 one,
-				//and R2010 already uses the positional list, with 28 entries instead of 58. Neither
-				//is implemented, stop here instead of reading garbage.
 				return template;
 			}
 
@@ -7020,8 +7012,10 @@ namespace ACadSharp.IO.DWG
 			//291 Internal use only flag
 			visualStyle.InternalFlag = this._objectReader.ReadBit();
 
-			//The number of entries is not stored in the file, it is implied by the layout version.
-			for (int i = 0; i < VisualStyle.PropertyCount; i++)
+			//The number of entries is not stored in the file, it is implied by the version:
+			//R2010 writes 28 entries, R2013 and newer write 58.
+			int propertyCount = VisualStyle.GetPropertyCount(this._version);
+			for (int i = 0; i < propertyCount; i++)
 			{
 				VisualStylePropertyType type = VisualStyle.GetPropertyType(i);
 				object value;
@@ -7058,7 +7052,7 @@ namespace ACadSharp.IO.DWG
 		}
 
 		/// <summary>
-		/// Reads the fixed field sequence a VISUALSTYLE uses before R2013.
+		/// Reads the fixed field sequence a VISUALSTYLE uses before R2010.
 		/// </summary>
 		/// <remarks>
 		/// The object is undocumented. This order was established by decoding the bit stream of
@@ -7129,6 +7123,16 @@ namespace ACadSharp.IO.DWG
 			visualStyle.Brightness = this._objectReader.ReadBitLong();
 			//173 Shadow type
 			visualStyle.ShadowType = this._objectReader.ReadBitShort();
+
+			if (this._version == ACadVersion.AC1021)
+			{
+				//R2007 has one more field here than R2004. It is 0 in every style of every sample,
+				//so its type cannot be told apart (a bit short 0 and a bit double 0.0 are the same
+				//two bits); the DXF code with no field anywhere else in the record is 45, which
+				//AutoCAD writes as 0.0. Read it as such and write the same two bits back.
+				this._objectReader.ReadBitDouble();
+			}
+
 			//291 Internal use only flag
 			visualStyle.InternalFlag = this._objectReader.ReadBit();
 		}
