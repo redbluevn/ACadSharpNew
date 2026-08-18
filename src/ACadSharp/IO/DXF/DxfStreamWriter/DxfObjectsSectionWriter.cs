@@ -554,6 +554,9 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 			case TableStyle tableStyle:
 				this.writeTableStyle(tableStyle);
 				break;
+			case VisualStyle visualStyle:
+				this.writeVisualStyle(visualStyle);
+				break;
 			case XRecord record:
 				this.writeXRecord(record);
 				break;
@@ -720,7 +723,9 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 			case DimensionAssociation:
 			case Material:
 			case MultiLeaderObjectContextData:
-			case VisualStyle:
+			//A visual style is only written when it carries the R2013+ property list; a style read
+			//from an older file has no list and there is nothing to write.
+			case VisualStyle visualStyle when visualStyle.Properties.Count != VisualStyle.PropertyCount:
 			case ProxyObject:
 			case MTextAttributeObjectContextData:
 			case BlockReferenceObjectContextData:
@@ -1686,6 +1691,57 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 		for (int i = 0; i < array.Length; i++)
 		{
 			this._writer.Write(40, array[i]);
+		}
+	}
+
+	/// <summary>
+	/// Writes the R2013+ positional property list of a visual style; the position in the list
+	/// identifies the property and each entry is followed by its flag, group code 176.
+	/// </summary>
+	private void writeVisualStyle(VisualStyle visualStyle)
+	{
+		this._writer.Write(100, DxfSubclassMarker.VisualStyle);
+
+		this._writer.Write(2, visualStyle.Name);
+		this._writer.Write(70, visualStyle.Type);
+		//AutoCAD writes 3 in DXF for the layout that stores 2 in DWG.
+		this._writer.Write(177, (short)3);
+		this._writer.Write(291, visualStyle.InternalFlag);
+		this._writer.Write(70, VisualStyle.PropertyCount);
+
+		for (int i = 0; i < VisualStyle.PropertyCount; i++)
+		{
+			VisualStyleProperty property = visualStyle.Properties[i];
+			switch (property.ValueType)
+			{
+				case VisualStylePropertyType.Integer:
+					this._writer.Write(90, property.AsInt());
+					break;
+				case VisualStylePropertyType.Double:
+					this._writer.Write(40, property.AsDouble());
+					break;
+				case VisualStylePropertyType.Boolean:
+					this._writer.Write(290, property.AsBool());
+					break;
+				case VisualStylePropertyType.Color:
+					{
+						Color color = property.AsColor();
+						this._writer.Write(62, color.GetApproxIndex());
+						if (color.IsTrueColor)
+						{
+							this._writer.Write(420, color.TrueColor);
+						}
+
+						break;
+					}
+				case VisualStylePropertyType.String:
+					this._writer.Write(1, property.AsString() ?? string.Empty);
+					break;
+				default:
+					throw new NotSupportedException($"Unknown visual style property type at index {i}");
+			}
+
+			this._writer.Write(176, property.Flag);
 		}
 	}
 
