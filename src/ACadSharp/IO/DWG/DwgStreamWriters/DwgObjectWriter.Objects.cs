@@ -1366,23 +1366,22 @@ internal partial class DwgObjectWriter : DwgSectionIO
 	}
 
 	/// <summary>
-	/// A <see cref="VisualStyle"/> can be written when the file format uses the positional property
-	/// list (R2013 and newer) and the style carries a complete list, or when it uses the fixed field
-	/// sequence of R2000 and R2004. R2007 and R2010 sit in between: their layouts are not decoded,
-	/// so those styles are still skipped rather than written wrong.
+	/// A <see cref="VisualStyle"/> can be written when the file format uses the fixed field sequence
+	/// (up to R2007) or when it uses the positional property list (R2010 and newer) and the style
+	/// carries at least the entries that version stores.
 	/// </summary>
 	private bool canWriteVisualStyle(VisualStyle visualStyle)
 	{
-		if (this.R2013Plus)
+		if (this.R2010Plus)
 		{
-			return visualStyle.Properties.Count == VisualStyle.PropertyCount;
+			return visualStyle.Properties.Count >= VisualStyle.GetPropertyCount(this._version);
 		}
 
-		return !this.R2007Plus;
+		return true;
 	}
 
 	/// <summary>
-	/// Writes the fixed field sequence a VISUALSTYLE uses in R2000 and R2004.
+	/// Writes the fixed field sequence a VISUALSTYLE uses up to R2007.
 	/// </summary>
 	/// <remarks>
 	/// Mirrors <c>DwgObjectReader.readLegacyVisualStyle</c>; see the remarks there for how the order
@@ -1450,6 +1449,14 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		this._writer.WriteBitLong((int)visualStyle.Brightness);
 		//173 Shadow type
 		this._writer.WriteBitShort(visualStyle.ShadowType);
+
+		if (this._version == ACadVersion.AC1021)
+		{
+			//45, the field R2007 has and R2004 does not; see the reader for why its type cannot be
+			//told apart. AutoCAD writes 0.0 in every style of every sample.
+			this._writer.WriteBitDouble(0.0);
+		}
+
 		//291 Internal use only flag
 		this._writer.WriteBit(visualStyle.InternalFlag);
 	}
@@ -1461,7 +1468,7 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		//70 Type
 		this._writer.WriteBitLong(visualStyle.Type);
 
-		if (!this.R2007Plus)
+		if (!this.R2010Plus)
 		{
 			this.writeLegacyVisualStyle(visualStyle);
 			return;
@@ -1472,8 +1479,10 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		//291 Internal use only flag
 		this._writer.WriteBit(visualStyle.InternalFlag);
 
-		//The entry count is not stored, it is implied by the layout version.
-		for (int i = 0; i < VisualStyle.PropertyCount; i++)
+		//The entry count is not stored, it is implied by the version: R2010 writes 28 entries,
+		//R2013 and newer write 58. The first 28 positions mean the same in both layouts.
+		int propertyCount = VisualStyle.GetPropertyCount(this._version);
+		for (int i = 0; i < propertyCount; i++)
 		{
 			VisualStyleProperty property = visualStyle.Properties[i];
 			switch (VisualStyle.GetPropertyType(i))

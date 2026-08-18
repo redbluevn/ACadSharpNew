@@ -131,7 +131,7 @@ public class VisualStyleTests
 	[InlineData(ACadVersion.AC1018)]
 	public void LegacyDwgRoundTripKeepsTheNamedProperties(ACadVersion version)
 	{
-		//Before R2013 the visual style is a fixed sequence of named fields, not the positional list.
+		//Up to R2007 the visual style is a fixed sequence of named fields, not the positional list.
 		CadDocument doc = new CadDocument(version);
 		doc.Entities.Add(new Line(XYZ.Zero, new XYZ(100, 50, 0)));
 
@@ -168,6 +168,101 @@ public class VisualStyleTests
 			//AutoCAD refuses a pre-R2013 drawing whose visual styles do not carry this record.
 			Assert.True(got.ExtendedData.ContainsKeyName(AppId.DefaultName), $"{style.Name} lost its ACAD extended data");
 		}
+	}
+
+	[Fact]
+	public void R2010DwgRoundTripKeepsThePropertyList()
+	{
+		//R2010 already uses the positional list, but stores 28 entries instead of the 58 of R2013.
+		CadDocument doc = new CadDocument(ACadVersion.AC1024);
+		doc.Entities.Add(new Line(XYZ.Zero, new XYZ(100, 50, 0)));
+
+		MemoryStream ms = new MemoryStream();
+		DwgWriter.Write(ms, doc);
+		using MemoryStream readStream = new MemoryStream(ms.ToArray());
+		CadDocument rt = DwgReader.Read(readStream);
+
+		Assert.True(doc.RootDictionary.TryGetEntry(CadDictionary.AcadVisualStyle, out CadDictionary original));
+		Assert.True(rt.RootDictionary.TryGetEntry(CadDictionary.AcadVisualStyle, out CadDictionary result));
+		Assert.Equal(original.Count(), result.Count());
+
+		foreach (VisualStyle style in original.OfType<VisualStyle>())
+		{
+			Assert.True(result.TryGetEntry(style.Name, out VisualStyle got), $"{style.Name} is missing after the round trip");
+			Assert.Equal(style.Type, got.Type);
+			Assert.Equal(style.InternalFlag, got.InternalFlag);
+			Assert.Equal(VisualStyle.PropertyCountR2010, got.Properties.Count);
+
+			for (int i = 0; i < VisualStyle.PropertyCountR2010; i++)
+			{
+				VisualStyleProperty expected = style.Properties[i];
+				VisualStyleProperty actual = got.Properties[i];
+
+				Assert.Equal(expected.ValueType, actual.ValueType);
+				Assert.Equal(expected.Flag, actual.Flag);
+				if (expected.ValueType == VisualStylePropertyType.Double)
+				{
+					Assert.Equal(expected.AsDouble(), actual.AsDouble(), 9);
+				}
+				else
+				{
+					Assert.Equal(expected.Value, actual.Value);
+				}
+			}
+		}
+	}
+
+	[Fact]
+	public void ReadsTheStylesOfAnR2010FileWrittenByAutoCad()
+	{
+		//R2010 stores 28 entries; before this was understood the reader stopped after the name.
+		string path = Path.Combine(TestVariables.SamplesFolder, "sample_AC1024.dwg");
+		CadDocument doc = DwgReader.Read(path);
+
+		Assert.True(doc.RootDictionary.TryGetEntry(CadDictionary.AcadVisualStyle, out CadDictionary dictionary));
+		foreach ((string name, int type) in ExpectedDefaults)
+		{
+			Assert.True(dictionary.TryGetEntry(name, out VisualStyle style), $"{name} is missing");
+			Assert.Equal(type, style.Type);
+			Assert.Equal(VisualStyle.PropertyCountR2010, style.Properties.Count);
+		}
+
+		//Values taken from samples/sample_AC1024_ascii.dxf, written by AutoCAD for the same drawing.
+		VisualStyle wireframe = (VisualStyle)dictionary[VisualStyle.DefaultName];
+		Assert.Equal(FaceLightingQualityType.PerVertexLighting, wireframe.FaceLightingQuality);
+		Assert.Equal(0.6, wireframe.FaceOpacityLevel, 9);
+		Assert.Equal(30.0, wireframe.FaceSpecularLevel, 9);
+		Assert.Equal(Color.ByEntity, wireframe.EdgeObscuredColor);
+		Assert.Equal(5, wireframe.EdgeSilhouetteWidth);
+		Assert.Equal(1, wireframe.DisplaySettings);
+	}
+
+	[Fact]
+	public void ReadsTheStylesOfAnR2007FileWrittenByAutoCad()
+	{
+		//R2007 uses the fixed sequence of R2004 plus one more field before the internal flag.
+		string path = Path.Combine(TestVariables.SamplesFolder, "sample_AC1021.dwg");
+		CadDocument doc = DwgReader.Read(path);
+
+		Assert.True(doc.RootDictionary.TryGetEntry(CadDictionary.AcadVisualStyle, out CadDictionary dictionary));
+
+		//The internal flag is the last field of the record: it only comes out right when every
+		//field before it has been read with the right size.
+		Assert.True(dictionary.TryGetEntry("2dWireframe", out VisualStyle wireframe));
+		Assert.False(wireframe.InternalFlag);
+		Assert.True(dictionary.TryGetEntry("Basic", out VisualStyle basic));
+		Assert.True(basic.InternalFlag);
+
+		Assert.Equal(-0.6, wireframe.FaceOpacityLevel, 9);
+		Assert.Equal(-30.0, wireframe.FaceSpecularLevel, 9);
+		Assert.Equal(5, wireframe.EdgeSilhouetteWidth);
+		Assert.Equal(1, wireframe.DisplaySettings);
+
+		//Brighten and Dim are the only styles with a brightness, and Dim's is negative.
+		Assert.True(dictionary.TryGetEntry("Brighten", out VisualStyle brighten));
+		Assert.Equal(50, brighten.Brightness, 9);
+		Assert.True(dictionary.TryGetEntry("Dim", out VisualStyle dim));
+		Assert.Equal(-50, dim.Brightness, 9);
 	}
 
 	[Theory]

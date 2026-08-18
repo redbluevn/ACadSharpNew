@@ -186,6 +186,24 @@ public class VisualStyle : NonGraphicalObject, IDxfClassDefined
 	public const int PropertyCount = 58;
 
 	/// <summary>
+	/// Number of entries of the <see cref="Properties"/> list in R2010 (AC1024), the first
+	/// version that uses the positional list.
+	/// </summary>
+	/// <remarks>
+	/// R2010 writes <see cref="PropertyListVersion"/> 2 with 28 entries; the 30 entries R2013
+	/// added come after them, so the positions 0 to 27 mean the same thing in both layouts.
+	/// </remarks>
+	public const int PropertyCountR2010 = 28;
+
+	/// <summary>
+	/// Number of entries of the <see cref="Properties"/> list the given version stores.
+	/// </summary>
+	public static int GetPropertyCount(ACadVersion version)
+	{
+		return version >= ACadVersion.AC1027 ? PropertyCount : PropertyCountR2010;
+	}
+
+	/// <summary>
 	/// Default <see cref="VisualStyle"/> name.
 	/// </summary>
 	public const string DefaultName = "2dWireframe";
