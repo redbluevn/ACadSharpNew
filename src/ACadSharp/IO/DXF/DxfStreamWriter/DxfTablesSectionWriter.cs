@@ -126,7 +126,10 @@ namespace ACadSharp.IO.DXF
 
 		private void writeBlockRecord(BlockRecord block, DxfClassMap map)
 		{
-			this._writer.WriteHandle(340, block.Layout, map);
+			//AutoCAD writes this handle on every block record, as 0 when the block has no layout.
+			//Leaving it out for the blocks that have none is what made AutoCAD lose track of the
+			//name of every anonymous block in a large drawing.
+			this._writer.Write(340, block.Layout?.Handle ?? 0UL, map);
 
 			this._writer.Write(70, (short)block.Units, map);
 			this._writer.Write(280, (byte)(block.IsExplodable ? 1u : 0u), map);

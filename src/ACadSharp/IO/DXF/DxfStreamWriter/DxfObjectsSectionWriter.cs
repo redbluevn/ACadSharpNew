@@ -1644,7 +1644,7 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 	{
 		this._writer.Write(DxfCode.Subclass, DxfSubclassMarker.SortentsTable);
 
-		this._writer.WriteHandle(330, e.BlockOwner);
+		this._writer.WriteHandle(330, (IHandledCadObject)e.BlockOwnerReference ?? e.BlockOwner);
 
 		foreach (SortEntitiesTable.Sorter item in e)
 		{

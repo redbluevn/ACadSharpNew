@@ -26,6 +26,18 @@ public partial class SortEntitiesTable : NonGraphicalObject, IDxfClassDefined, I
 	[DxfCodeValue(330)]
 	public BlockRecord BlockOwner { get; internal set; }
 
+	/// <summary>
+	/// The owner exactly as the file stores it, which is not always a block record.
+	/// </summary>
+	/// <remarks>
+	/// A drawing can hold sort tables whose owner is a dictionary: AutoCAD writes them, keeps them
+	/// and audits such a file without a single error. <see cref="BlockOwner"/> can only hold a block
+	/// record, so writing that back gave a null handle and AutoCAD then reported
+	/// "AcDbSortEntsTable Block Id not valid" once per object. The writers use this reference so the
+	/// file keeps what it came with.
+	/// </remarks>
+	internal CadObject BlockOwnerReference { get; set; }
+
 	/// <inheritdoc/>
 	public override string ObjectName => DxfFileToken.ObjectSortEntsTable;
 
