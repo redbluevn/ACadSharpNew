@@ -490,21 +490,33 @@ namespace ACadSharp
 		/// <returns>Approximate RGB color.</returns>
 		public static byte ApproxIndex(byte r, byte g, byte b)
 		{
-			var prevDist = -1;
-			for (var i = 0; i < _indexRgb.Length; i++)
-			{
-				var dist = (r - _indexRgb[i][0]) + (g - _indexRgb[i][1]) + (b - _indexRgb[i][2]);
-				if (dist == 0)
-					return (byte)i;
+			//The distance has to be a real distance. Adding the three signed differences and taking
+			//the first index whose sum went below the starting -1 returned index 1 - pure red - for
+			//any colour darker than it, so the ambient colour of a viewport came out red.
+			byte closest = 0;
+			int closestDistance = int.MaxValue;
 
-				if (dist < prevDist)
+			//Index 0 is a placeholder for ByBlock and holds no colour of its own.
+			for (var i = 1; i < _indexRgb.Length; i++)
+			{
+				int dr = r - _indexRgb[i][0];
+				int dg = g - _indexRgb[i][1];
+				int db = b - _indexRgb[i][2];
+				int distance = dr * dr + dg * dg + db * db;
+
+				if (distance == 0)
 				{
-					prevDist = dist;
 					return (byte)i;
+				}
+
+				if (distance < closestDistance)
+				{
+					closestDistance = distance;
+					closest = (byte)i;
 				}
 			}
 
-			return 0;
+			return closest;
 		}
 
 		/// <summary>
