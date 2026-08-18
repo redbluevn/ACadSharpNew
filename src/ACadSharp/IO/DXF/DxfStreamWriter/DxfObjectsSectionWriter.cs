@@ -46,12 +46,6 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 				continue;
 			}
 
-			//Not compatible dictionaries
-			if (item.Name == CadDictionary.AcadMaterial)
-			{
-				continue;
-			}
-
 			//Skip the entries that will not be written to avoid dangling references
 			if (!this.isObjectSupported(item))
 			{
@@ -554,6 +548,9 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 			case TableStyle tableStyle:
 				this.writeTableStyle(tableStyle);
 				break;
+			case Material material:
+				this.writeMaterial(material);
+				break;
 			case VisualStyle visualStyle:
 				this.writeVisualStyle(visualStyle);
 				break;
@@ -726,7 +723,6 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 			case AecCleanupGroup:
 			case AecBinRecord:
 			case DimensionAssociation:
-			case Material:
 			case MultiLeaderObjectContextData:
 			//A visual style is only written when it carries the R2013+ property list; a style read
 			//from an older file has no list and there is nothing to write.
@@ -1375,14 +1371,22 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 		}
 
 		this._writer.Write(140, cellStyle.TextHeight);
-		this._writer.Write(170, cellStyle.CellAlignment);
+		//R2007 and newer keep the alignment in Alignment; a style that comes from such a file has
+		//CellAlignment unset, and writing the 0 makes AutoCAD repair the table style.
+		short alignment = cellStyle.CellAlignment == TableStyle.CellAlignmentType.None
+			? (short)cellStyle.Alignment
+			: (short)cellStyle.CellAlignment;
+		this._writer.Write(170, alignment);
 
 		this._writer.Write(62, cellStyle.ContentColor.GetApproxIndex());
 		this._writer.Write(63, cellStyle.BackgroundColor.GetApproxIndex());
 		this._writer.Write(283, cellStyle.IsFillColorOn ? 1 : 0);
 
-		this._writer.Write(90, (int)cellStyle.Type);
-		this._writer.Write(91, (int)cellStyle.ValueDataType);
+		//AutoCAD writes the data type of the cell value here, not the style type: 512 for a general
+		//cell. The unit type and the format string follow it.
+		this._writer.Write(90, cellStyle.ValueDataType);
+		this._writer.Write(91, cellStyle.ValueUnitType);
+		this._writer.Write(1, cellStyle.ValueFormatString ?? string.Empty);
 
 		this.writeCellStyleBorder(cellStyle.TopBorder, 0);
 		this.writeCellStyleBorder(cellStyle.HorizontalInsideBorder, 1);
@@ -1700,6 +1704,77 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 	}
 
 	/// <summary>
+	/// Writes a material, mirroring what <c>readMaterial</c> reads: the scalar properties through
+	/// the class map and the six texture matrices as sixteen doubles each.
+	/// </summary>
+	private void writeMaterial(Material material)
+	{
+		DxfClassMap map = DxfClassMap.Create<Material>();
+
+		this._writer.Write(100, DxfSubclassMarker.Material);
+
+		this._writer.Write(1, material.Name, map);
+		this._writer.Write(2, material.Description ?? string.Empty, map);
+
+		this._writer.Write(70, (short)material.AmbientColorMethod, map);
+		this._writer.Write(40, material.AmbientColorFactor, map);
+		this._writer.Write(90, material.AmbientColor.GetApproxIndex(), map);
+
+		this._writer.Write(71, (short)material.DiffuseColorMethod, map);
+		this._writer.Write(41, material.DiffuseColorFactor, map);
+		this._writer.Write(91, material.DiffuseColor.GetApproxIndex(), map);
+		this._writer.Write(42, material.DiffuseMapBlendFactor, map);
+		this._writer.Write(72, (short)material.DiffuseMapSource, map);
+		this._writer.Write(3, material.DiffuseMapFileName ?? string.Empty, map);
+		this.writeMatrix(43, material.DiffuseMatrix);
+
+		this._writer.Write(44, material.SpecularGlossFactor, map);
+		this._writer.Write(45, material.SpecularMapBlendFactor, map);
+		this._writer.Write(73, (short)material.SpecularMapSource, map);
+		this._writer.Write(4, material.SpecularMapFileName ?? string.Empty, map);
+		this.writeMatrix(47, material.SpecularMatrix);
+
+		this._writer.Write(46, material.ReflectionMapBlendFactor, map);
+		this._writer.Write(74, (short)material.ReflectionMapSource, map);
+		this._writer.Write(6, material.ReflectionMapFileName ?? string.Empty, map);
+		this.writeMatrix(49, material.ReflectionMatrix);
+
+		this._writer.Write(140, material.Opacity, map);
+		this._writer.Write(141, material.OpacityMapBlendFactor, map);
+		this._writer.Write(75, (short)material.OpacityMapSource, map);
+		this._writer.Write(7, material.OpacityMapFileName ?? string.Empty, map);
+		this.writeMatrix(142, material.OpacityMatrix);
+
+		this._writer.Write(143, material.BumpMapBlendFactor, map);
+		this._writer.Write(76, (short)material.BumpMapSource, map);
+		this._writer.Write(8, material.BumpMapFileName ?? string.Empty, map);
+		this.writeMatrix(144, material.BumpMatrix);
+
+		this._writer.Write(145, material.RefractionIndex, map);
+		this._writer.Write(146, material.RefractionMapBlendFactor, map);
+		this._writer.Write(77, (short)material.RefractionMapSource, map);
+		this._writer.Write(9, material.RefractionMapFileName ?? string.Empty, map);
+		this.writeMatrix(147, material.RefractionMatrix);
+
+		this._writer.Write(93, (int)material.IlluminationModel, map);
+		this._writer.Write(94, (int)material.ChannelFlags, map);
+	}
+
+	/// <summary>
+	/// Writes a texture transform as the sixteen doubles the reader expects under one group code.
+	/// </summary>
+	private void writeMatrix(int code, CSMath.Matrix4 matrix)
+	{
+		for (int row = 0; row < 4; row++)
+		{
+			for (int column = 0; column < 4; column++)
+			{
+				this._writer.Write(code, matrix[row, column]);
+			}
+		}
+	}
+
+	/// <summary>
 	/// Writes the R2013+ positional property list of a visual style; the position in the list
 	/// identifies the property and each entry is followed by its flag, group code 176.
 	/// </summary>
@@ -1755,6 +1830,10 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 		DxfClassMap map = DxfClassMap.Create<TableStyle>();
 
 		this._writer.Write(100, DxfSubclassMarker.TableStyle);
+
+		//Version of the table style object, AutoCAD writes 0. It comes before the description and
+		//uses the same group code as SuppressTitle further down.
+		this._writer.Write(280, (short)0);
 
 		this._writer.Write(3, style.Description, map);
 
