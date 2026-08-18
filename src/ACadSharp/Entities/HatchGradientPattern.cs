@@ -74,7 +74,9 @@ namespace ACadSharp.Entities
 		{
 			HatchGradientPattern clone = (HatchGradientPattern)this.MemberwiseClone();
 
-			clone.Colors.Clear();
+			//A new list: MemberwiseClone shares the one of the source, so clearing it emptied the
+			//source too and left nothing to copy.
+			clone.Colors = new List<GradientColor>();
 			foreach (var item in this.Colors)
 			{
 				clone.Colors.Add(item.Clone());

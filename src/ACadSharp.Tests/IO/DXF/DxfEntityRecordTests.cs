@@ -52,10 +52,7 @@ namespace ACadSharp.Tests.IO.DXF
 			Leader leader = new Leader();
 			leader.Vertices.Add(new XYZ(0, 0, 0));
 			leader.Vertices.Add(new XYZ(10, 10, 0));
-			//The setter is internal: only the readers assign the annotation today.
-			typeof(Leader).GetProperty(nameof(Leader.AssociatedAnnotation))
-				.GetSetMethod(true)
-				.Invoke(leader, new object[] { annotation });
+			leader.AssociatedAnnotation = annotation;
 			doc.Entities.Add(leader);
 
 			List<(int, string)> record = this.recordOf(doc, "LEADER");

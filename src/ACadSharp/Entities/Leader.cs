@@ -33,8 +33,13 @@ public class Leader : Entity, IOrientable
 	/// <summary>
 	/// Hard reference to associated annotation (mtext, tolerance, or insert entity).
 	/// </summary>
+	/// <remarks>
+	/// Settable: an application that builds a leader has to be able to point it at the text it
+	/// annotates. While the setter was internal only a reader could fill it, so a leader created in
+	/// code could never carry the reference AutoCAD asks for and had to be exported as loose lines.
+	/// </remarks>
 	[DxfCodeValue(DxfReferenceType.Handle, 340)]
-	public Entity AssociatedAnnotation { get; internal set; }
+	public Entity AssociatedAnnotation { get; set; }
 
 	/// <summary>
 	/// Offset of last leader vertex from block reference insertion point.
