@@ -6,6 +6,7 @@ using CSUtilities.IO;
 using CSUtilities.Text;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace ACadSharp.IO;
 
