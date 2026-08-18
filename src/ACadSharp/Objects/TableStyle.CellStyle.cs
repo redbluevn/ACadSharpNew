@@ -28,6 +28,8 @@ public partial class TableStyle
 					HasData = true,
 				};
 
+				applyAutoCadDefaults(data, alignment: 2, textHeight: 0.18);
+
 				return data;
 			}
 		}
@@ -46,6 +48,8 @@ public partial class TableStyle
 					Id = 2,
 					HasData = true,
 				};
+
+				applyAutoCadDefaults(data, alignment: 5, textHeight: 0.18);
 
 				return data;
 			}
@@ -66,6 +70,9 @@ public partial class TableStyle
 					HasData = true,
 				};
 
+				applyAutoCadDefaults(data, alignment: 5, textHeight: 0.25);
+				data.TableCellStylePropertyFlags = CellStylePropertyFlags.MergeAll;
+
 				return data;
 			}
 		}
@@ -85,6 +92,8 @@ public partial class TableStyle
 					HasData = true,
 				};
 
+				applyAutoCadDefaults(data, alignment: 1, textHeight: 0.18);
+
 				return data;
 			}
 		}
@@ -93,6 +102,47 @@ public partial class TableStyle
 		/// The name constant for the default table-level cell style.
 		/// </summary>
 		public const string TableCellStyleName = "Table";
+
+		/// <summary>
+		/// Fills a default cell style with the values AutoCAD writes for the Standard table style.
+		/// </summary>
+		/// <remarks>
+		/// A cell style left at the CLR defaults (no margins, no scale, no text height, borders not
+		/// applied) is reported by AutoCAD as a damaged AcDbTableStyle and rewritten when the file
+		/// is opened. The values come from the table style of a drawing created by AutoCAD.
+		/// </remarks>
+		/// <param name="style">Style to fill.</param>
+		/// <param name="alignment">Content alignment, 1 for the table style, 2 for data cells and 5 for header and title cells.</param>
+		/// <param name="textHeight">Text height, 0.18 except for the title cells, which use 0.25.</param>
+		private static void applyAutoCadDefaults(CellStyle style, int alignment, double textHeight)
+		{
+			style.Type = CellStyleType.Table;
+			style.Alignment = alignment;
+			style.TextHeight = textHeight;
+			style.Scale = 1.0;
+			style.ValueDataType = 512;
+			style.ValueFormatString = string.Empty;
+			style.ContentLayoutFlags = CellContentLayoutFlags.Flow;
+			style.BackgroundColor = Color.ByEntity;
+
+			style.HorizontalMargin = 0.06;
+			style.VerticalMargin = 0.06;
+			style.RightMargin = 0.06;
+			style.BottomMargin = 0.06;
+			style.MarginHorizontalSpacing = 0.18;
+			style.MarginVerticalSpacing = 0.18;
+			style.MarginOverrideFlags = MarginFlags.Override;
+
+			foreach (CellBorder border in new[]
+			{
+				style.TopBorder, style.BottomBorder, style.LeftBorder, style.RightBorder,
+				style.HorizontalInsideBorder, style.VerticalInsideBorder,
+			})
+			{
+				border.ApplyBorder = true;
+				border.DoubleLineSpacing = 0.045;
+			}
+		}
 
 		/// <summary>
 		/// Gets or sets the background (fill) color of the cell content.

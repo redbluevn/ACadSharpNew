@@ -18,7 +18,7 @@ public partial class TableStyle : NonGraphicalObject, IDxfClassDefined
 	/// <summary>
 	/// Gets the default TableStyle.
 	/// </summary>
-	public static TableStyle Default { get { return new TableStyle(DefaultName); } }
+	public static TableStyle Default { get { return new TableStyle(DefaultName) { Description = DefaultName }; } }
 
 	/// <summary>
 	/// Gets the collection of cell styles applied to the table entity.
