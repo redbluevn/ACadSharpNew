@@ -188,7 +188,7 @@ internal abstract class DxfSectionReaderBase
 			case DxfFileToken.EntityHatch:
 				return this.readEntityCodes<Hatch>(new CadHatchTemplate(), this.readHatch);
 			case DxfFileToken.EntityInsert:
-				return this.readEntityCodes<Insert>(new CadInsertTemplate(), this.readInsert);
+				return this.readInsert();
 			case DxfFileToken.EntityMText:
 				return this.readEntityCodes<MText>(new CadTextEntityTemplate(new MText()), this.readTextEntity);
 			case DxfFileToken.EntityMLine:
@@ -979,6 +979,56 @@ internal abstract class DxfSectionReaderBase
 			default:
 				return this.tryAssignCurrentValue(template.CadObject, map.SubClasses[template.CadObject.SubclassMarker]);
 		}
+	}
+
+	private CadEntityTemplate readInsert()
+	{
+		CadInsertTemplate template = new CadInsertTemplate();
+		Insert insert = (Insert)template.CadObject;
+
+		this.readEntityCodes<Insert>(template, this.readInsert);
+
+		//The attributes of an insert follow it in the stream and are closed by a seqend. A drawing
+		//written before R13 carries no handles at all, so the owner reference the builder normally
+		//follows is not there and the attributes have to be taken from their place in the stream;
+		//without this they came back as loose attributes of the block and the insert had none.
+		while (this._reader.Code == 0 && this._reader.ValueAsString == DxfFileToken.EntityAttribute)
+		{
+			AttributeEntity att = new AttributeEntity();
+			CadAttributeTemplate attTemplate = new CadAttributeTemplate(att);
+			this.readEntityCodes<AttributeEntity>(attTemplate, this.readAttributeDefinition);
+
+			if (att.Handle == 0)
+			{
+				insert.Attributes.Add(att);
+			}
+			else
+			{
+				template.OwnedObjectsHandlers.Add(att.Handle);
+			}
+
+			//Registered either way so its layer, style and linetype are resolved like any entity.
+			this._builder.AddTemplate(attTemplate);
+		}
+
+		while (this._reader.Code == 0 && this._reader.ValueAsString == DxfFileToken.EndSequence)
+		{
+			Seqend seqend = new Seqend();
+			CadEntityTemplate<Seqend> seqendTemplate = new CadEntityTemplate<Seqend>(seqend);
+			this.readEntityCodes<Seqend>(seqendTemplate, this.readEntitySubclassMap);
+
+			if (seqend.Handle == 0)
+			{
+				insert.Attributes.Seqend = seqend;
+			}
+			else
+			{
+				template.SeqendHandle = seqend.Handle;
+				this._builder.AddTemplate(seqendTemplate);
+			}
+		}
+
+		return template;
 	}
 
 	private bool readInsert(CadEntityTemplate template, DxfMap map, string subclass = null)
