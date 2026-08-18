@@ -1418,9 +1418,8 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		this._writer.WriteBitDouble(visualStyle.EdgeCreaseAngle);
 		//92 Edge modifiers
 		this._writer.WriteBitLong(visualStyle.EdgeModifiers);
-		//66 Edge color, an index in the model; guard the range a colour index accepts
-		int edgeColor = visualStyle.EdgeColor < 0 || visualStyle.EdgeColor > 257 ? 0 : visualStyle.EdgeColor;
-		this._writer.WriteCmColor(new Color((short)edgeColor));
+		//66 Edge color
+		this._writer.WriteCmColor(visualStyle.EdgeColor);
 		//43 Opacity level
 		this._writer.WriteBitDouble(visualStyle.OpacityLevel);
 		//76 Edge width

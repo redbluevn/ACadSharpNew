@@ -7090,9 +7090,8 @@ namespace ACadSharp.IO.DWG
 			visualStyle.EdgeCreaseAngle = this._objectReader.ReadBitDouble();
 			//92 Edge modifiers
 			visualStyle.EdgeModifiers = this._objectReader.ReadBitLong();
-			//66 Edge color, an index in the model while the file stores a full colour
-			Color edgeColor = this._mergedReaders.ReadCmColor();
-			visualStyle.EdgeColor = edgeColor.IsTrueColor ? edgeColor.GetApproxIndex() : edgeColor.Index;
+			//66 Edge color
+			visualStyle.EdgeColor = this._mergedReaders.ReadCmColor();
 			//43 Opacity level
 			visualStyle.OpacityLevel = this._objectReader.ReadBitDouble();
 			//76 Edge width
