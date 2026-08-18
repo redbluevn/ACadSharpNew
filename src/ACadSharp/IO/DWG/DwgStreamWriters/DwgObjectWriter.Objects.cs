@@ -1366,13 +1366,92 @@ internal partial class DwgObjectWriter : DwgSectionIO
 	}
 
 	/// <summary>
-	/// A <see cref="VisualStyle"/> can only be written when the file format uses the positional
-	/// property list (R2013 and newer) and the style carries a complete list; the layout used by
-	/// older versions is not implemented, and padding an incomplete list would mean inventing values.
+	/// A <see cref="VisualStyle"/> can be written when the file format uses the positional property
+	/// list (R2013 and newer) and the style carries a complete list, or when it uses the fixed field
+	/// sequence of R2000 and R2004. R2007 and R2010 sit in between: their layouts are not decoded,
+	/// so those styles are still skipped rather than written wrong.
 	/// </summary>
 	private bool canWriteVisualStyle(VisualStyle visualStyle)
 	{
-		return this.R2013Plus && visualStyle.Properties.Count == VisualStyle.PropertyCount;
+		if (this.R2013Plus)
+		{
+			return visualStyle.Properties.Count == VisualStyle.PropertyCount;
+		}
+
+		return !this.R2007Plus;
+	}
+
+	/// <summary>
+	/// Writes the fixed field sequence a VISUALSTYLE uses in R2000 and R2004.
+	/// </summary>
+	/// <remarks>
+	/// Mirrors <c>DwgObjectReader.readLegacyVisualStyle</c>; see the remarks there for how the order
+	/// was established. Two DXF codes of the record have no field in the file, AutoCAD writes the
+	/// constants 5 for code 62 and 0.0 for code 45.
+	/// </remarks>
+	private void writeLegacyVisualStyle(VisualStyle visualStyle)
+	{
+		//71 Face lighting model
+		this._writer.WriteBitShort((short)visualStyle.FaceLightingModel);
+		//72 Face lighting quality
+		this._writer.WriteBitShort((short)visualStyle.FaceLightingQuality);
+		//73 Face color mode
+		this._writer.WriteBitShort((short)visualStyle.FaceColorMode);
+		//40 Face opacity level
+		this._writer.WriteBitDouble(visualStyle.FaceOpacityLevel);
+		//41 Face specular level
+		this._writer.WriteBitDouble(visualStyle.FaceSpecularLevel);
+		//63 Color
+		this._writer.WriteCmColor(visualStyle.Color);
+		//90 Face modifiers
+		this._writer.WriteBitLong((int)visualStyle.FaceModifiers);
+		//74 Edge style model
+		this._writer.WriteBitShort((short)visualStyle.EdgeStyleModel);
+		//91 Edge style
+		this._writer.WriteBitLong(visualStyle.EdgeStyle);
+		//64 Edge intersection color
+		this._writer.WriteCmColor(visualStyle.EdgeIntersectionColor);
+		//65 Edge obscured color
+		this._writer.WriteCmColor(visualStyle.EdgeObscuredColor);
+		//75 Edge obscured line type
+		this._writer.WriteBitShort((short)visualStyle.EdgeObscuredLineType);
+		//42 Edge crease angle
+		this._writer.WriteBitDouble(visualStyle.EdgeCreaseAngle);
+		//92 Edge modifiers
+		this._writer.WriteBitLong(visualStyle.EdgeModifiers);
+		//66 Edge color, an index in the model; guard the range a colour index accepts
+		int edgeColor = visualStyle.EdgeColor < 0 || visualStyle.EdgeColor > 257 ? 0 : visualStyle.EdgeColor;
+		this._writer.WriteCmColor(new Color((short)edgeColor));
+		//43 Opacity level
+		this._writer.WriteBitDouble(visualStyle.OpacityLevel);
+		//76 Edge width
+		this._writer.WriteBitShort((short)visualStyle.EdgeWidth);
+		//77 Edge overhang
+		this._writer.WriteBitShort((short)visualStyle.EdgeOverhang);
+		//78 Edge jitter
+		this._writer.WriteBitShort((short)visualStyle.EdgeJitter);
+		//67 Edge silhouette color
+		this._writer.WriteCmColor(visualStyle.EdgeSilhouetteColor);
+		//79 Edge silhouette width
+		this._writer.WriteBitShort((short)visualStyle.EdgeSilhouetteWidth);
+		//170 Halo gap, a raw byte and not a bit short
+		this._writer.WriteByte((byte)visualStyle.HaloGap);
+		//171 Edge isoline count
+		this._writer.WriteBitShort(visualStyle.EdgeIsolineCount);
+		//290 Edge hide precision flag
+		this._writer.WriteBit(visualStyle.PrecisionFlag);
+		//174 Edge apply style flag
+		this._writer.WriteBitShort(visualStyle.EdgeApplyStyleFlag);
+		//175 Edge intersection line type
+		this._writer.WriteBitShort((short)visualStyle.EdgeIntersectionLineType);
+		//93 Display settings
+		this._writer.WriteBitLong(visualStyle.DisplaySettings);
+		//44 Brightness, an integer here and a double in DXF
+		this._writer.WriteBitLong((int)visualStyle.Brightness);
+		//173 Shadow type
+		this._writer.WriteBitShort(visualStyle.ShadowType);
+		//291 Internal use only flag
+		this._writer.WriteBit(visualStyle.InternalFlag);
 	}
 
 	private void writeVisualStyle(VisualStyle visualStyle)
@@ -1381,6 +1460,13 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		this._writer.WriteVariableText(visualStyle.Name);
 		//70 Type
 		this._writer.WriteBitLong(visualStyle.Type);
+
+		if (!this.R2007Plus)
+		{
+			this.writeLegacyVisualStyle(visualStyle);
+			return;
+		}
+
 		//177 Property list version
 		this._writer.WriteBitShort(visualStyle.PropertyListVersion);
 		//291 Internal use only flag

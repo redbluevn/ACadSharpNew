@@ -1,4 +1,4 @@
-using ACadSharp.Entities;
+﻿using ACadSharp.Entities;
 using ACadSharp.IO;
 using ACadSharp.Objects;
 using ACadSharp.Tables;
@@ -123,6 +123,50 @@ public class VisualStyleTests
 					Assert.Equal(expected.Value, actual.Value);
 				}
 			}
+		}
+	}
+
+	[Theory]
+	[InlineData(ACadVersion.AC1015)]
+	[InlineData(ACadVersion.AC1018)]
+	public void LegacyDwgRoundTripKeepsTheNamedProperties(ACadVersion version)
+	{
+		//Before R2013 the visual style is a fixed sequence of named fields, not the positional list.
+		CadDocument doc = new CadDocument(version);
+		doc.Entities.Add(new Line(XYZ.Zero, new XYZ(100, 50, 0)));
+
+		MemoryStream ms = new MemoryStream();
+		DwgWriter.Write(ms, doc);
+		using MemoryStream readStream = new MemoryStream(ms.ToArray());
+		CadDocument rt = DwgReader.Read(readStream);
+
+		Assert.True(doc.RootDictionary.TryGetEntry(CadDictionary.AcadVisualStyle, out CadDictionary original));
+		Assert.True(rt.RootDictionary.TryGetEntry(CadDictionary.AcadVisualStyle, out CadDictionary result));
+		Assert.Equal(original.Count(), result.Count());
+
+		foreach (VisualStyle style in original.OfType<VisualStyle>())
+		{
+			Assert.True(result.TryGetEntry(style.Name, out VisualStyle got), $"{style.Name} is missing after the round trip");
+			Assert.Equal(style.Type, got.Type);
+
+			//One value of every kind and from both ends of the record, so a shift cannot pass.
+			Assert.Equal(style.FaceLightingModel, got.FaceLightingModel);
+			Assert.Equal(style.FaceColorMode, got.FaceColorMode);
+			Assert.Equal(style.FaceOpacityLevel, got.FaceOpacityLevel, 9);
+			Assert.Equal(style.FaceSpecularLevel, got.FaceSpecularLevel, 9);
+			Assert.Equal(style.EdgeStyle, got.EdgeStyle);
+			Assert.Equal(style.EdgeObscuredColor, got.EdgeObscuredColor);
+			Assert.Equal(style.EdgeCreaseAngle, got.EdgeCreaseAngle, 9);
+			Assert.Equal(style.EdgeSilhouetteWidth, got.EdgeSilhouetteWidth);
+			Assert.Equal(style.HaloGap, got.HaloGap);
+			Assert.Equal(style.PrecisionFlag, got.PrecisionFlag);
+			Assert.Equal(style.DisplaySettings, got.DisplaySettings);
+			Assert.Equal(style.Brightness, got.Brightness, 9);
+			Assert.Equal(style.ShadowType, got.ShadowType);
+			Assert.Equal(style.InternalFlag, got.InternalFlag);
+
+			//AutoCAD refuses a pre-R2013 drawing whose visual styles do not carry this record.
+			Assert.True(got.ExtendedData.ContainsKeyName(AppId.DefaultName), $"{style.Name} lost its ACAD extended data");
 		}
 	}
 
