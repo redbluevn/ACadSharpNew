@@ -370,7 +370,7 @@ namespace ACadSharp.IO.DWG
 			if (this.R2007Plus)
 			{
 				//H: CMATERIAL(hard pointer)
-				this._writer.HandleReference(DwgReferenceType.HardPointer, null);
+				this._writer.HandleReference(DwgReferenceType.HardPointer, this._header.CurrentMaterial);
 			}
 
 			//Common:
