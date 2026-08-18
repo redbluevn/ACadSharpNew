@@ -302,6 +302,40 @@ public class CadDocument : IHandledCadObject
 			}
 		}
 
+		//A cell style whose text style is not in the document writes a null handle, which AutoCAD
+		//reports as a damaged AcDbTableStyle when the file is opened; point them at Standard.
+		if (this.TableStyles != null && this.TextStyles.Contains(TextStyle.DefaultName))
+		{
+			TextStyle standard = this.TextStyles[TextStyle.DefaultName];
+			foreach (TableStyle tableStyle in this.TableStyles)
+			{
+				foreach (TableStyle.CellStyle cellStyle in tableStyle.GetCellStyles())
+				{
+					if (cellStyle.TextStyle == null || cellStyle.TextStyle.Document == null)
+					{
+						cellStyle.TextStyle = standard;
+					}
+				}
+			}
+		}
+
+		//Materials, like AutoCAD: every layer points at "Global" and CMATERIAL at "ByLayer".
+		if (this.Materials != null)
+		{
+			if (this.Materials.TryGet(Material.GlobalName, out Material globalMaterial))
+			{
+				foreach (Layer layer in this.Layers)
+				{
+					layer.Material ??= globalMaterial;
+				}
+			}
+
+			if (this.Materials.TryGet(Material.ByLayerName, out Material byLayerMaterial))
+			{
+				this.Header.CurrentMaterial ??= byLayerMaterial;
+			}
+		}
+
 		//Blocks
 		if (!this.BlockRecords.Contains(BlockRecord.ModelSpaceName))
 		{
