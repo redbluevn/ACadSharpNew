@@ -1078,7 +1078,9 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		}
 
 		//H 340 Associated annotation
-		this._writer.HandleReference(DwgReferenceType.HardPointer, null);
+		//A leader created with text or a tolerance points at that entity; writing a null handle
+		//while the creation type says there is one makes AutoCAD report "Bad mtext id" on audit.
+		this._writer.HandleReference(DwgReferenceType.HardPointer, leader.AssociatedAnnotation);
 		//H 2 DIMSTYLE (hard pointer)
 		this._writer.HandleReference(DwgReferenceType.HardPointer, leader.Style);
 	}
