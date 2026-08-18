@@ -1868,7 +1868,18 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		{
 			if (notify)
 			{
-				this.notify($"Object type not implemented {obj.GetType().FullName}", NotificationType.NotImplemented);
+				//An unknown object is a special case: it is not a type nobody implemented, it is an
+				//object whose payload the reader did not keep, so say which class is being lost.
+				if (obj is UnknownNonGraphicalObject unknown)
+				{
+					this.notify(
+						$"Object {unknown.DxfClass?.DxfName ?? "UNKNOWN"} with handle {unknown.Handle} was read as an unknown object, its content was not kept and it cannot be written",
+						NotificationType.NotImplemented);
+				}
+				else
+				{
+					this.notify($"Object type not implemented {obj.GetType().FullName}", NotificationType.NotImplemented);
+				}
 			}
 			return;
 		}
