@@ -904,20 +904,25 @@ namespace ACadSharp.IO.DWG
 				int flags = _reader.ReadBitLong();
 				//CELWEIGHT Flags & 0x001F
 				_header.CurrentEntityLineWeight = (LineWeightType)(flags & 0x1F);
+				//These are bits of one word, so a test against 1 is only ever true for the lowest of
+				//them: every flag below came back false whatever the drawing said, and the two that
+				//are not booleans kept the raw bits instead of the value. The masks and the shifts
+				//are the ones DwgHeaderWriter uses to put the word back together.
+
 				//ENDCAPS Flags & 0x0060
-				_header.EndCaps = (short)(flags & 0x60);
+				_header.EndCaps = (short)((flags & 0x60) >> 5);
 				//JOINSTYLE Flags & 0x0180
-				_header.JoinStyle = (short)(flags & 0x180);
+				_header.JoinStyle = (short)((flags & 0x180) >> 7);
 				//LWDISPLAY!(Flags & 0x0200)
-				_header.DisplayLineWeight = (flags & 0x200) == 1;
+				_header.DisplayLineWeight = (flags & 0x200) == 0;
 				//XEDIT!(Flags & 0x0400)
-				_header.XEdit = (short)(flags & 0x400) == 1;
+				_header.XEdit = (flags & 0x400) == 0;
 				//EXTNAMES Flags & 0x0800
-				_header.ExtendedNames = (flags & 0x800) == 1;
+				_header.ExtendedNames = (flags & 0x800) != 0;
 				//PSTYLEMODE Flags & 0x2000
-				_header.PlotStyleMode = (short)(flags & 0x2000);
+				_header.PlotStyleMode = (short)((flags & 0x2000) != 0 ? 1 : 0);
 				//OLESTARTUP Flags & 0x4000
-				_header.LoadOLEObject = (flags & 0x4000) == 1;
+				_header.LoadOLEObject = (flags & 0x4000) != 0;
 
 				//BS: INSUNITS
 				_header.InsUnits = (UnitsType)_reader.ReadBitShort();
