@@ -49,6 +49,15 @@ namespace ACadSharp.IO.Templates
 				builder.Notify($"Base ucs not implemented for Viewport, handle {this.BaseUcsHandle}");
 			}
 
+			if (builder.TryGetCadObject(this.VisualStyleHandle, out Objects.VisualStyle visualStyle))
+			{
+				this.CadObject.VisualStyle = visualStyle;
+			}
+			else if (this.VisualStyleHandle.HasValue && this.VisualStyleHandle > 0)
+			{
+				builder.Notify($"Visual style {this.VisualStyleHandle} not found for viewport {this.CadObject.Handle}", NotificationType.Warning);
+			}
+
 			foreach (var handle in this.FrozenLayerHandles)
 			{
 				if (builder.TryGetCadObject(handle, out Layer layer))

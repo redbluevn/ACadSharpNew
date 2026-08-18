@@ -2974,7 +2974,7 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			//H 332 Background(soft pointer)
 			this._writer.HandleReference(DwgReferenceType.SoftPointer, null);
 			//H 348 Visual Style(hard pointer)
-			this._writer.HandleReference(DwgReferenceType.HardPointer, null);
+			this._writer.HandleReference(DwgReferenceType.HardPointer, viewport.VisualStyle);
 			//H 333 Shadeplot ID(soft pointer)
 			this._writer.HandleReference(DwgReferenceType.SoftPointer, null);
 			//H 361 Sun(hard owner)
