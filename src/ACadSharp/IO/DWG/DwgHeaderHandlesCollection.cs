@@ -115,7 +115,9 @@ namespace ACadSharp.IO.DWG
 
 			if (builder.TryGetCadObject(this.DIMLDRBLK, out record))
 			{
-				header.DimensionBlockName = record.Name;
+				//$DIMLDRBLK is the leader arrowhead and has its own variable; assigning it to
+				//DimensionBlockName overwrote $DIMBLK, which had just been read.
+				header.ArrowBlockName = record.Name;
 			}
 
 			if (builder.TryGetCadObject(this.DIMBLK1, out record))

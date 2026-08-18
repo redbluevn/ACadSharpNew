@@ -749,14 +749,17 @@ namespace ACadSharp.IO.DWG
 			{
 				//H: DIMTXSTY(hard pointer)
 				this._writer.HandleReference(DwgReferenceType.HardPointer, this._header.DimensionTextStyle);
+				//These four name the blocks a dimension draws at its ends. Writing null dropped them
+				//on every save: a drawing whose dimensions use _ArchTick came back with none, so
+				//every dimension in it changed the way it draws.
 				//H: DIMLDRBLK(hard pointer)
-				this._writer.HandleReference(DwgReferenceType.HardPointer, null);
+				this._writer.HandleReference(DwgReferenceType.HardPointer, this.blockRecord(this._header.ArrowBlockName));
 				//H: DIMBLK(hard pointer)
-				this._writer.HandleReference(DwgReferenceType.HardPointer, null);
+				this._writer.HandleReference(DwgReferenceType.HardPointer, this.blockRecord(this._header.DimensionBlockName));
 				//H: DIMBLK1(hard pointer)
-				this._writer.HandleReference(DwgReferenceType.HardPointer, null);
+				this._writer.HandleReference(DwgReferenceType.HardPointer, this.blockRecord(this._header.DimensionBlockNameFirst));
 				//H: DIMBLK2(hard pointer)
-				this._writer.HandleReference(DwgReferenceType.HardPointer, null);
+				this._writer.HandleReference(DwgReferenceType.HardPointer, this.blockRecord(this._header.DimensionBlockNameSecond));
 			}
 
 			//R2007+ Only:
@@ -1059,6 +1062,20 @@ namespace ACadSharp.IO.DWG
 
 			//Write the size and merge the streams
 			this.writeSizeAndCrc();
+		}
+
+		/// <summary>
+		/// The block record a header variable names, or null when there is none in the document.
+		/// </summary>
+		private ACadSharp.Tables.BlockRecord blockRecord(string name)
+		{
+			if (string.IsNullOrEmpty(name))
+			{
+				return null;
+			}
+
+			this._document.BlockRecords.TryGetValue(name, out ACadSharp.Tables.BlockRecord record);
+			return record;
 		}
 
 		private void writeSizeAndCrc()

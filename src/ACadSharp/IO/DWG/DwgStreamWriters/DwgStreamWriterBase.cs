@@ -352,8 +352,10 @@ namespace ACadSharp.IO.DWG
 
 		public void WriteTimeSpan(TimeSpan value)
 		{
+			//Days, then the milliseconds inside that day. Writing value.Milliseconds sent only the
+			//fraction of a second, so everything from the hours down was lost on every save.
 			this.WriteBitLong(value.Days);
-			this.WriteBitLong(value.Milliseconds);
+			this.WriteBitLong((int)(value - TimeSpan.FromDays(value.Days)).TotalMilliseconds);
 		}
 
 		public void Write8BitJulianDate(DateTime value)

@@ -1068,16 +1068,18 @@ namespace ACadSharp.IO.DWG
 		/// <inheritdoc/>
 		public TimeSpan ReadTimeSpan()
 		{
-			long hours = this.ReadBitLong();
+			//The pair is a number of days and the milliseconds inside that day, the same shape the
+			//date fields use. Reading the first one as hours turned 15 days into 15 hours.
+			long days = this.ReadBitLong();
 			long milliseconds = this.ReadBitLong();
 
 			// Handle potential overflow
-			if (hours < 0 || hours > TimeSpan.MaxValue.TotalHours || milliseconds < 0 || milliseconds > TimeSpan.MaxValue.TotalMilliseconds)
+			if (days < 0 || days > TimeSpan.MaxValue.TotalDays || milliseconds < 0 || milliseconds > TimeSpan.MaxValue.TotalMilliseconds)
 			{
-				return TimeSpan.FromHours(0) + TimeSpan.FromMilliseconds(0);
+				return TimeSpan.Zero;
 			}
 
-			return TimeSpan.FromHours(hours) + TimeSpan.FromMilliseconds(milliseconds);
+			return TimeSpan.FromDays(days) + TimeSpan.FromMilliseconds(milliseconds);
 		}
 
 		#region Stream pointer control
