@@ -159,9 +159,14 @@ internal abstract partial class DxfSectionWriterBase
 
 				if (string.IsNullOrEmpty(shapeEntity.ShapeName))
 				{
-					//DXF identifies the shape by name and the name is not stored in DWG, so an entity
-					//that comes from a DWG cannot be written to DXF.
-					this.notify($"Shape {shapeEntity.Handle} has no shape name, it cannot be written to DXF", NotificationType.Warning);
+					//DXF identifies the shape by name and DWG stores only its index in the shape
+					//file, so an entity that comes from a DWG cannot be written to DXF until the
+					//caller reads the name out of that file and sets ShapeName. Writing a name the
+					//shape file does not hold is worse than skipping: AutoCAD then refuses the whole
+					//drawing, measured with accoreconsole on samples/sample_AC1032.dwg.
+					this.notify(
+						$"Shape {shapeEntity.Handle} has no shape name, it cannot be written to DXF; it is the shape number {shapeEntity.ShapeIndex} of {shapeEntity.ShapeStyle?.Filename}",
+						NotificationType.Warning);
 					return false;
 				}
 
