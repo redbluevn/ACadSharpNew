@@ -37,8 +37,15 @@ public class VisualStyle : NonGraphicalObject, IDxfClassDefined
 	[DxfCodeValue(174)]
 	public short EdgeApplyStyleFlag { get; set; }
 
+	/// <summary>
+	/// Edge colour.
+	/// </summary>
+	/// <remarks>
+	/// A full colour and not a colour index: from R2004 the file stores a true colour here, for
+	/// example 0x808080 for the ColorChange style, which an index cannot hold.
+	/// </remarks>
 	[DxfCodeValue(66)]
-	public int EdgeColor { get; set; }
+	public Color EdgeColor { get; set; }
 
 	[DxfCodeValue(42)]
 	public double EdgeCreaseAngle { get; set; }
@@ -323,10 +330,7 @@ public class VisualStyle : NonGraphicalObject, IDxfClassDefined
 		this.EdgeIntersectionLineType = this.Properties[12].AsInt();
 		this.EdgeCreaseAngle = this.Properties[13].AsDouble();
 		this.EdgeModifiers = this.Properties[14].AsInt();
-		//EdgeColor is an index while the entry can hold a true colour; keep the closest index
-		//so the value stays inside the 0..257 range a colour index accepts.
-		Color edgeColor = this.Properties[15].AsColor();
-		this.EdgeColor = edgeColor.IsTrueColor ? edgeColor.GetApproxIndex() : edgeColor.Index;
+		this.EdgeColor = this.Properties[15].AsColor();
 		this.OpacityLevel = this.Properties[16].AsDouble();
 		this.EdgeWidth = this.Properties[17].AsInt();
 		this.EdgeOverhang = this.Properties[18].AsInt();

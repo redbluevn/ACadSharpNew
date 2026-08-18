@@ -156,6 +156,17 @@ public class VisualStyleTests
 			Assert.Equal(style.FaceSpecularLevel, got.FaceSpecularLevel, 9);
 			Assert.Equal(style.EdgeStyle, got.EdgeStyle);
 			Assert.Equal(style.EdgeObscuredColor, got.EdgeObscuredColor);
+
+			//A colour in R2000 is only an index, so a true colour comes back as the closest index;
+			//from R2004 the file holds the whole colour and it survives untouched.
+			if (version < ACadVersion.AC1018 && style.EdgeColor.IsTrueColor)
+			{
+				Assert.Equal(style.EdgeColor.GetApproxIndex(), got.EdgeColor.Index);
+			}
+			else
+			{
+				Assert.Equal(style.EdgeColor, got.EdgeColor);
+			}
 			Assert.Equal(style.EdgeCreaseAngle, got.EdgeCreaseAngle, 9);
 			Assert.Equal(style.EdgeSilhouetteWidth, got.EdgeSilhouetteWidth);
 			Assert.Equal(style.HaloGap, got.HaloGap);
@@ -210,6 +221,34 @@ public class VisualStyleTests
 				}
 			}
 		}
+	}
+
+	[Fact]
+	public void EdgeColourKeepsATrueColour()
+	{
+		//From R2004 the file stores a full colour here, not a colour index: the ColorChange style of
+		//samples/sample_AC1018.dwg has 0x808080, which the DXF AutoCAD wrote for the same drawing
+		//spells as the index 8 plus the true colour 8421504 in group code 424.
+		string path = Path.Combine(TestVariables.SamplesFolder, "sample_AC1018.dwg");
+		CadDocument doc = DwgReader.Read(path);
+
+		Assert.True(doc.RootDictionary.TryGetEntry(CadDictionary.AcadVisualStyle, out CadDictionary dictionary));
+		Assert.True(dictionary.TryGetEntry("ColorChange", out VisualStyle style));
+
+		Assert.True(style.EdgeColor.IsTrueColor);
+		Assert.Equal(0x80, style.EdgeColor.R);
+		Assert.Equal(0x80, style.EdgeColor.G);
+		Assert.Equal(0x80, style.EdgeColor.B);
+
+		//And it survives a round trip, which an index could not do.
+		MemoryStream ms = new MemoryStream();
+		DwgWriter.Write(ms, doc);
+		using MemoryStream readStream = new MemoryStream(ms.ToArray());
+		CadDocument rt = DwgReader.Read(readStream);
+
+		Assert.True(rt.RootDictionary.TryGetEntry(CadDictionary.AcadVisualStyle, out CadDictionary result));
+		Assert.True(result.TryGetEntry("ColorChange", out VisualStyle got));
+		Assert.Equal(style.EdgeColor, got.EdgeColor);
 	}
 
 	[Fact]
