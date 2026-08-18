@@ -1705,7 +1705,7 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			//Background handle H 332 soft pointer
 			this._writer.HandleReference(DwgReferenceType.SoftPointer, 0);
 			//Visual style H 348 hard pointer
-			this._writer.HandleReference(DwgReferenceType.HardPointer, 0);
+			this._writer.HandleReference(DwgReferenceType.HardPointer, view.VisualStyle);
 			//Sun H 361 hard owner
 			this._writer.HandleReference(DwgReferenceType.HardOwnership, 0);
 		}
@@ -1874,7 +1874,7 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			//Background handle H 332 soft pointer
 			this._writer.HandleReference(DwgReferenceType.SoftPointer, 0);
 			//Visual Style handle H 348 hard pointer
-			this._writer.HandleReference(DwgReferenceType.HardPointer, 0);
+			this._writer.HandleReference(DwgReferenceType.HardPointer, vport.VisualStyle);
 			//Sun handle H 361 hard owner
 			this._writer.HandleReference(DwgReferenceType.HardOwnership, 0);
 		}

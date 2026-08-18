@@ -6931,7 +6931,7 @@ namespace ACadSharp.IO.DWG
 				//H 332 Background(soft pointer)
 				long backgroundHandle = (long)this.handleReference();
 				//H 348 Visual Style(hard pointer)
-				long visualStyleHandle = (long)this.handleReference();
+				template.VisualStyleHandle = this.handleReference();
 				//H 333 Shadeplot ID(soft pointer)
 				long shadePlotIdHandle = (long)this.handleReference();
 				//H 361 Sun(hard owner)
@@ -6999,20 +6999,52 @@ namespace ACadSharp.IO.DWG
 			//70
 			visualStyle.Type = this._objectReader.ReadBitLong();
 
-			//177
-			var value177 = _objectReader.ReadBitShort();
+			if (!this.R2013Plus)
+			{
+				//Before R2013 the object stores the properties as a fixed sequence of named fields
+				//instead of the positional list below. That layout is not implemented yet, stop here
+				//to avoid reading garbage.
+				return template;
+			}
+
+			//177 Property list version, AutoCAD writes 2 for the 58 entry layout of R2013-R2018.
+			visualStyle.PropertyListVersion = this._objectReader.ReadBitShort();
 			//291 Internal use only flag
-			var value291 = this._objectReader.ReadBit();
+			visualStyle.InternalFlag = this._objectReader.ReadBit();
 
-			//70 Count then repeat 90 and 176
-			int count = this._objectReader.ReadBitLong();
+			//The number of entries is not stored in the file, it is implied by the layout version.
+			for (int i = 0; i < VisualStyle.PropertyCount; i++)
+			{
+				VisualStylePropertyType type = VisualStyle.GetPropertyType(i);
+				object value;
+				switch (type)
+				{
+					case VisualStylePropertyType.Integer:
+						value = this._objectReader.ReadBitLong();
+						break;
+					case VisualStylePropertyType.Double:
+						value = this._objectReader.ReadBitDouble();
+						break;
+					case VisualStylePropertyType.Boolean:
+						value = this._objectReader.ReadBit();
+						break;
+					case VisualStylePropertyType.Color:
+						value = this._mergedReaders.ReadCmColor();
+						break;
+					case VisualStylePropertyType.String:
+						value = this._textReader.ReadVariableText();
+						break;
+					default:
+						throw new System.NotSupportedException($"Unknown visual style property type {type}");
+				}
 
-#if TEST
-			var objValues = DwgStreamReaderBase.Explore(_objectReader);
-			var textValues = DwgStreamReaderBase.Explore(_textReader);
-#endif
+				//176 Flag of the entry
+				short flag = this._objectReader.ReadBitShort();
 
-			//TODO: Finish dwg implementation for VisualStyle (avoids noise in the logs)
+				visualStyle.Properties.Add(new VisualStyleProperty(type, value, flag));
+			}
+
+			visualStyle.ApplyPropertyList();
 
 			return template;
 		}

@@ -291,6 +291,17 @@ public class CadDocument : IHandledCadObject
 		this.DimensionStyles.CreateDefaultEntries();
 		this.VPorts.CreateDefaultEntries();
 
+		//Point the active viewport to the default visual style, like AutoCAD does; a viewport with a
+		//dangling or missing visual style reference is what makes viewers fall back to an undefined style.
+		if (this.RootDictionary.TryGetEntry(CadDictionary.AcadVisualStyle, out CadDictionary visualStyles)
+			&& visualStyles.TryGetEntry(VisualStyle.DefaultName, out VisualStyle defaultVisualStyle))
+		{
+			foreach (VPort vport in this.VPorts)
+			{
+				vport.VisualStyle ??= defaultVisualStyle;
+			}
+		}
+
 		//Blocks
 		if (!this.BlockRecords.Contains(BlockRecord.ModelSpaceName))
 		{

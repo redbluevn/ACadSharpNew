@@ -18,6 +18,15 @@ namespace ACadSharp.IO.Templates
 		{
 			base.build(builder);
 
+			if (builder.TryGetCadObject(this.VisualStyleHandle, out Objects.VisualStyle visualStyle))
+			{
+				this.CadObject.VisualStyle = visualStyle;
+			}
+			else if (this.VisualStyleHandle.HasValue && this.VisualStyleHandle > 0)
+			{
+				builder.Notify($"Visual style {this.VisualStyleHandle} not found for view {this.CadObject.Name}", NotificationType.Warning);
+			}
+
 			//TODO: assing ucs for view
 		}
 	}

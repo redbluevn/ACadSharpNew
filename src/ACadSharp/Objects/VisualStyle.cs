@@ -1,5 +1,6 @@
 ﻿using ACadSharp.Attributes;
 using ACadSharp.Classes;
+using System.Collections.Generic;
 using System.Xml.Linq;
 
 namespace ACadSharp.Objects;
@@ -159,9 +160,165 @@ public class VisualStyle : NonGraphicalObject, IDxfClassDefined
 	public int Type { get; set; }
 
 	/// <summary>
+	/// Positional property list used by AC1027 (R2013) and newer.
+	/// </summary>
+	/// <remarks>
+	/// From R2013 the visual style is stored as an ordered list of values, each one with a flag
+	/// (DXF group code 176); the position in the list identifies the property. Files older than
+	/// R2013 use the named properties of this class instead and leave this list empty.
+	/// The count written by AutoCAD is 58; see <see cref="PropertyCount"/>.
+	/// </remarks>
+	public IList<VisualStyleProperty> Properties { get; } = new List<VisualStyleProperty>();
+
+	/// <summary>
+	/// Version of the property list layout, DXF group code 177.
+	/// </summary>
+	/// <remarks>
+	/// AutoCAD writes 2 in DWG and 3 in DXF for the 58-entry layout of R2013–R2018.
+	/// </remarks>
+	[DxfCodeValue(177)]
+	public short PropertyListVersion { get; set; } = 2;
+
+	/// <summary>
+	/// Number of entries of the <see cref="Properties"/> list written by AutoCAD for
+	/// <see cref="PropertyListVersion"/> 2, the value is not stored in the DWG file.
+	/// </summary>
+	public const int PropertyCount = 58;
+
+	/// <summary>
 	/// Default <see cref="VisualStyle"/> name.
 	/// </summary>
 	public const string DefaultName = "2dWireframe";
+
+	/// <summary>
+	/// Value type of each entry of the <see cref="Properties"/> list, index 0 to 57.
+	/// </summary>
+	/// <remarks>
+	/// Established by comparing, for the same drawing, the DXF written by AutoCAD (where each
+	/// entry carries its group code) with the DWG bit stream. Entries 0 to 27 match, in order,
+	/// the named properties of this class; 28 to 57 are R2013 additions whose meaning is not
+	/// documented, they are preserved as-is so a file can be round-tripped without losing them.
+	/// </remarks>
+	private static readonly VisualStylePropertyType[] _propertyTypes = new VisualStylePropertyType[]
+	{
+		VisualStylePropertyType.Integer,	//0  FaceLightingModel, 71
+		VisualStylePropertyType.Integer,	//1  FaceLightingQuality, 72
+		VisualStylePropertyType.Integer,	//2  FaceColorMode, 73
+		VisualStylePropertyType.Integer,	//3  FaceModifiers, 90
+		VisualStylePropertyType.Double,		//4  FaceOpacityLevel, 40
+		VisualStylePropertyType.Double,		//5  FaceSpecularLevel, 41
+		VisualStylePropertyType.Color,		//6  Color, 62 + 420
+		VisualStylePropertyType.Integer,	//7  EdgeStyleModel, 74
+		VisualStylePropertyType.Integer,	//8  EdgeStyle, 91
+		VisualStylePropertyType.Color,		//9  EdgeIntersectionColor, 64
+		VisualStylePropertyType.Color,		//10 EdgeObscuredColor, 65
+		VisualStylePropertyType.Integer,	//11 EdgeObscuredLineType, 75
+		VisualStylePropertyType.Integer,	//12 EdgeIntersectionLineType, 175
+		VisualStylePropertyType.Double,		//13 EdgeCreaseAngle, 42
+		VisualStylePropertyType.Integer,	//14 EdgeModifiers, 92
+		VisualStylePropertyType.Color,		//15 EdgeColor, 66
+		VisualStylePropertyType.Double,		//16 OpacityLevel, 43
+		VisualStylePropertyType.Integer,	//17 EdgeWidth, 76
+		VisualStylePropertyType.Integer,	//18 EdgeOverhang, 77
+		VisualStylePropertyType.Integer,	//19 EdgeJitter, 78
+		VisualStylePropertyType.Color,		//20 EdgeSilhouetteColor, 67
+		VisualStylePropertyType.Integer,	//21 EdgeSilhouetteWidth, 79
+		VisualStylePropertyType.Integer,	//22 HaloGap, 170
+		VisualStylePropertyType.Integer,	//23 EdgeIsolineCount, 171
+		VisualStylePropertyType.Boolean,	//24 PrecisionFlag, 290
+		VisualStylePropertyType.Integer,	//25 DisplaySettings, 93
+		VisualStylePropertyType.Double,		//26 Brightness, 44
+		VisualStylePropertyType.Integer,	//27 ShadowType, 173
+		VisualStylePropertyType.Boolean,	//28 R2013+, undocumented
+		VisualStylePropertyType.Boolean,	//29
+		VisualStylePropertyType.Boolean,	//30
+		VisualStylePropertyType.Boolean,	//31
+		VisualStylePropertyType.Boolean,	//32
+		VisualStylePropertyType.Boolean,	//33
+		VisualStylePropertyType.Boolean,	//34
+		VisualStylePropertyType.Boolean,	//35
+		VisualStylePropertyType.Boolean,	//36
+		VisualStylePropertyType.Integer,	//37
+		VisualStylePropertyType.Double,		//38
+		VisualStylePropertyType.Double,		//39
+		VisualStylePropertyType.Integer,	//40
+		VisualStylePropertyType.Color,		//41
+		VisualStylePropertyType.Integer,	//42
+		VisualStylePropertyType.Integer,	//43
+		VisualStylePropertyType.Color,		//44
+		VisualStylePropertyType.Boolean,	//45
+		VisualStylePropertyType.Integer,	//46
+		VisualStylePropertyType.Integer,	//47
+		VisualStylePropertyType.Integer,	//48
+		VisualStylePropertyType.Boolean,	//49
+		VisualStylePropertyType.Integer,	//50
+		VisualStylePropertyType.Color,		//51
+		VisualStylePropertyType.Double,		//52
+		VisualStylePropertyType.Integer,	//53
+		VisualStylePropertyType.String,		//54 raster file name
+		VisualStylePropertyType.Boolean,	//55
+		VisualStylePropertyType.Double,		//56
+		VisualStylePropertyType.Double,		//57
+	};
+
+	/// <summary>
+	/// Gets the value type of the entry at the given position of the <see cref="Properties"/> list.
+	/// </summary>
+	/// <param name="index">Position in the list, 0 to <see cref="PropertyCount"/> - 1.</param>
+	public static VisualStylePropertyType GetPropertyType(int index)
+	{
+		if (index < 0 || index >= _propertyTypes.Length)
+		{
+			throw new System.ArgumentOutOfRangeException(nameof(index));
+		}
+
+		return _propertyTypes[index];
+	}
+
+	/// <summary>
+	/// Copies the entries of <see cref="Properties"/> that have a documented meaning into the
+	/// named properties of this class, so both views of the same style are consistent.
+	/// </summary>
+	/// <remarks>
+	/// The list stays the authoritative source for DWG round-trip; this method only fills the
+	/// convenience properties. Entries 28 to 57 have no named counterpart and are left in the list.
+	/// </remarks>
+	public void ApplyPropertyList()
+	{
+		if (this.Properties.Count < 28)
+		{
+			return;
+		}
+
+		this.FaceLightingModel = (FaceLightingModelType)this.Properties[0].AsInt();
+		this.FaceLightingQuality = (FaceLightingQualityType)this.Properties[1].AsInt();
+		this.FaceColorMode = (FaceColorMode)this.Properties[2].AsInt();
+		this.FaceModifiers = (FaceModifierType)this.Properties[3].AsInt();
+		this.FaceOpacityLevel = this.Properties[4].AsDouble();
+		this.FaceSpecularLevel = this.Properties[5].AsDouble();
+		this.Color = this.Properties[6].AsColor();
+		this.EdgeStyleModel = (EdgeStyleModel)this.Properties[7].AsInt();
+		this.EdgeStyle = this.Properties[8].AsInt();
+		this.EdgeIntersectionColor = this.Properties[9].AsColor();
+		this.EdgeObscuredColor = this.Properties[10].AsColor();
+		this.EdgeObscuredLineType = this.Properties[11].AsInt();
+		this.EdgeIntersectionLineType = this.Properties[12].AsInt();
+		this.EdgeCreaseAngle = this.Properties[13].AsDouble();
+		this.EdgeModifiers = this.Properties[14].AsInt();
+		this.EdgeColor = this.Properties[15].AsColor().Index;
+		this.OpacityLevel = this.Properties[16].AsDouble();
+		this.EdgeWidth = this.Properties[17].AsInt();
+		this.EdgeOverhang = this.Properties[18].AsInt();
+		this.EdgeJitter = this.Properties[19].AsInt();
+		this.EdgeSilhouetteColor = this.Properties[20].AsColor();
+		this.EdgeSilhouetteWidth = this.Properties[21].AsInt();
+		this.HaloGap = (short)this.Properties[22].AsInt();
+		this.EdgeIsolineCount = (short)this.Properties[23].AsInt();
+		this.PrecisionFlag = this.Properties[24].AsBool();
+		this.DisplaySettings = this.Properties[25].AsInt();
+		this.Brightness = this.Properties[26].AsDouble();
+		this.ShadowType = (short)this.Properties[27].AsInt();
+	}
 
 	/// <inheritdoc/>
 	public DxfClass GetDxfClass()
