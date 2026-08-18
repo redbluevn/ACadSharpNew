@@ -313,7 +313,8 @@ public class CadDocument : IHandledCadObject
 				{
 					if (cellStyle.TextStyle == null || cellStyle.TextStyle.Document == null)
 					{
-						cellStyle.TextStyle = standard;
+						//AutoCAD leaves the table level style without a text style.
+						cellStyle.TextStyle = cellStyle.Name == TableStyle.CellStyle.TableCellStyleName ? null : standard;
 					}
 				}
 			}
