@@ -848,7 +848,8 @@ namespace ACadSharp.IO.DWG
 			if (this.R2007Plus)
 			{
 				//H: DICTIONARY(VISUALSTYLE)(hard pointer)
-				this._writer.HandleReference(DwgReferenceType.HardPointer, null);
+				this._document.RootDictionary.TryGetEntry(ACadSharp.Objects.CadDictionary.AcadVisualStyle, out ACadSharp.Objects.CadDictionary visualStyles);
+				this._writer.HandleReference(DwgReferenceType.HardPointer, visualStyles);
 
 				//R2013+:
 				if (this.R2013Plus)
