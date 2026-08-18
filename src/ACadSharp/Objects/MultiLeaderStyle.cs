@@ -1,9 +1,9 @@
-﻿using System;
-using ACadSharp.Attributes;
+﻿using ACadSharp.Attributes;
 using ACadSharp.Classes;
 using ACadSharp.Entities;
 using ACadSharp.Tables;
 using CSMath;
+using System;
 
 namespace ACadSharp.Objects;
 
@@ -766,21 +766,6 @@ public class MultiLeaderStyle : NonGraphicalObject, IDxfClassDefined
 		return clone;
 	}
 
-	/// <inheritdoc/>
-	public DxfClass GetDxfClass()
-	{
-		return new DxfClass
-		{
-			CppClassName = DxfSubclassMarker.MLeaderStyle,
-			DwgVersion = ACadVersion.AC1021,
-			DxfName = DxfFileToken.ObjectMLeaderStyle,
-			ItemClassId = 499,
-			MaintenanceVersion = 25,
-			ProxyFlags = (ProxyFlags)4095,
-			WasZombie = false,
-		};
-	}
-
 	internal override void AssignDocument(CadDocument doc)
 	{
 		base.AssignDocument(doc);
@@ -813,7 +798,10 @@ public class MultiLeaderStyle : NonGraphicalObject, IDxfClassDefined
 	{
 		if (e.Item.Equals(this._textStyle))
 		{
-			this._textStyle = this.Document.TextStyles[Layer.DefaultName];
+			//The default of a text style is "Standard"; Layer.DefaultName is "0", the default of a
+			//layer, and no text style is called that, so removing a text style a multileader
+			//style referenced threw a KeyNotFoundException out of a public collection method.
+			this._textStyle = this.Document.TextStyles[TextStyle.DefaultName];
 		}
 
 		if (e.Item.Equals(this._leaderLineType))
@@ -830,5 +818,20 @@ public class MultiLeaderStyle : NonGraphicalObject, IDxfClassDefined
 		{
 			this._blockContent = null;
 		}
+	}
+
+	/// <inheritdoc/>
+	public DxfClass GetDxfClass()
+	{
+		return new DxfClass
+		{
+			CppClassName = DxfSubclassMarker.MLeaderStyle,
+			DwgVersion = ACadVersion.AC1021,
+			DxfName = DxfFileToken.ObjectMLeaderStyle,
+			ItemClassId = 499,
+			MaintenanceVersion = 25,
+			ProxyFlags = (ProxyFlags)4095,
+			WasZombie = false,
+		};
 	}
 }
