@@ -2184,7 +2184,9 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		this._writer.Write3BitDouble(shape.Normal);
 
 		//H SHAPEFILE (hard pointer)
-		this._writer.HandleReference(DwgReferenceType.HardPointer, null);
+		//The shape is drawn by the shape file of its text style; writing a null handle leaves the
+		//entity without the file that defines its geometry.
+		this._writer.HandleReference(DwgReferenceType.HardPointer, shape.ShapeStyle);
 	}
 
 	private void writeSolid(Solid solid)

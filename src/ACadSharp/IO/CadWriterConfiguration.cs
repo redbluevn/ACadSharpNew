@@ -63,12 +63,15 @@ public class CadWriterConfiguration
 	/// The writer will not ignore the <see cref="ACadSharp.Entities.Shape"/> entities in the document.
 	/// </summary>
 	/// <remarks>
-	/// Shapes can cause corruption for some documents due the lack of support for shx files in this library which cannot validate the correct shape format.
+	/// The shape file the entity is drawn with is referenced through its text style; that handle is
+	/// written since the fix in <c>writeShape</c>, and AutoCAD audits such a file with no errors for
+	/// AC1015 and AC1032. The library still does not read the shx file itself, so it cannot check
+	/// that the shape index exists in it.
 	/// </remarks>
 	/// <value>
-	/// default: false
+	/// default: true
 	/// </value>
-	public bool WriteShapes { get; set; } = false;
+	public bool WriteShapes { get; set; } = true;
 
 	/// <summary>
 	/// The writer will not ignore the <see cref="ACadSharp.XData.ExtendedData"/> collection in the <see cref="CadObject"/>.
