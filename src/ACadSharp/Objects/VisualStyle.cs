@@ -1,6 +1,7 @@
 ﻿using ACadSharp.Attributes;
 using ACadSharp.Classes;
 using System.Collections.Generic;
+using System.Linq;
 using System.Xml.Linq;
 
 namespace ACadSharp.Objects;
@@ -308,6 +309,92 @@ public class VisualStyle : NonGraphicalObject, IDxfClassDefined
 	/// The list stays the authoritative source for DWG round-trip; this method only fills the
 	/// convenience properties. Entries 28 to 57 have no named counterpart and are left in the list.
 	/// </remarks>
+	/// <summary>
+	/// Fills the positional list from the named properties, so a style read from a version that
+	/// stores the named fields can be written to one that stores the list.
+	/// </summary>
+	/// <remarks>
+	/// Up to R2007 a visual style is a fixed sequence of named fields and the list stays empty;
+	/// R2010 and newer store the list instead. Without this a drawing saved from an older
+	/// version to a newer one lost every visual style it had, because the writer had no list to
+	/// write. Positions 0 to 27 come from the named properties; the entries R2013 added have no
+	/// named counterpart and are taken from the default style of the same name when there is
+	/// one, which is where AutoCAD's own values for them come from.
+	/// </remarks>
+	public void BuildPropertyList()
+	{
+		VisualStyle defaults = DefaultVisualStyles.Create()
+			.FirstOrDefault(s => string.Equals(s.Name, this.Name, System.StringComparison.OrdinalIgnoreCase));
+
+		this.Properties.Clear();
+		for (int i = 0; i < PropertyCount; i++)
+		{
+			VisualStylePropertyType type = GetPropertyType(i);
+			short flag = defaults != null && i < defaults.Properties.Count ? defaults.Properties[i].Flag : (short)1;
+			object value = i < 28 ? this.namedProperty(i) : defaults?.Properties[i].Value;
+
+			if (value == null)
+			{
+				switch (type)
+				{
+					case VisualStylePropertyType.Integer:
+						value = 0;
+						break;
+					case VisualStylePropertyType.Double:
+						value = 0.0;
+						break;
+					case VisualStylePropertyType.Boolean:
+						value = false;
+						break;
+					case VisualStylePropertyType.Color:
+						value = Color.ByBlock;
+						break;
+					default:
+						value = string.Empty;
+						break;
+				}
+			}
+
+			this.Properties.Add(new VisualStyleProperty(type, value, flag));
+		}
+	}
+
+	private object namedProperty(int index)
+	{
+		switch (index)
+		{
+			case 0: return (int)this.FaceLightingModel;
+			case 1: return (int)this.FaceLightingQuality;
+			case 2: return (int)this.FaceColorMode;
+			case 3: return (int)this.FaceModifiers;
+			case 4: return this.FaceOpacityLevel;
+			case 5: return this.FaceSpecularLevel;
+			case 6: return this.Color;
+			case 7: return (int)this.EdgeStyleModel;
+			case 8: return this.EdgeStyle;
+			case 9: return this.EdgeIntersectionColor;
+			case 10: return this.EdgeObscuredColor;
+			case 11: return this.EdgeObscuredLineType;
+			case 12: return this.EdgeIntersectionLineType;
+			case 13: return this.EdgeCreaseAngle;
+			case 14: return this.EdgeModifiers;
+			case 15: return this.EdgeColor;
+			case 16: return this.OpacityLevel;
+			case 17: return this.EdgeWidth;
+			case 18: return this.EdgeOverhang;
+			case 19: return this.EdgeJitter;
+			case 20: return this.EdgeSilhouetteColor;
+			case 21: return this.EdgeSilhouetteWidth;
+			case 22: return (int)this.HaloGap;
+			case 23: return (int)this.EdgeIsolineCount;
+			case 24: return this.PrecisionFlag;
+			case 25: return this.DisplaySettings;
+			case 26: return this.Brightness;
+			case 27: return (int)this.ShadowType;
+			default: return null;
+		}
+	}
+
 	public void ApplyPropertyList()
 	{
 		if (this.Properties.Count < 28)

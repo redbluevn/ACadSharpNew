@@ -252,6 +252,38 @@ public class VisualStyleTests
 	}
 
 	[Fact]
+	public void StylesReadFromALegacyVersionCanBeWrittenToANewOne()
+	{
+		//Up to R2007 a visual style is a sequence of named fields and the positional list stays
+		//empty. Saving such a drawing as R2013 or newer used to drop every style, because the writer
+		//had no list to write.
+		string path = Path.Combine(TestVariables.SamplesFolder, "sample_AC1015.dwg");
+		CadDocument doc = DwgReader.Read(path);
+
+		Assert.True(doc.RootDictionary.TryGetEntry(CadDictionary.AcadVisualStyle, out CadDictionary original));
+		Assert.Empty(original.OfType<VisualStyle>().First().Properties);
+
+		doc.Header.Version = ACadVersion.AC1032;
+		MemoryStream ms = new MemoryStream();
+		DwgWriter.Write(ms, doc);
+		using MemoryStream readStream = new MemoryStream(ms.ToArray());
+		CadDocument rt = DwgReader.Read(readStream);
+
+		Assert.True(rt.RootDictionary.TryGetEntry(CadDictionary.AcadVisualStyle, out CadDictionary result));
+		Assert.Equal(original.Count(), result.Count());
+
+		VisualStyle wireframe = (VisualStyle)result[VisualStyle.DefaultName];
+		Assert.Equal(VisualStyle.PropertyCount, wireframe.Properties.Count);
+
+		//The values that came from the named fields have to survive the trip through the list.
+		VisualStyle before = (VisualStyle)original[VisualStyle.DefaultName];
+		Assert.Equal(before.FaceLightingModel, wireframe.FaceLightingModel);
+		Assert.Equal(before.EdgeSilhouetteWidth, wireframe.EdgeSilhouetteWidth);
+		Assert.Equal(before.DisplaySettings, wireframe.DisplaySettings);
+		Assert.Equal(before.FaceOpacityLevel, wireframe.FaceOpacityLevel, 9);
+	}
+
+	[Fact]
 	public void ReadsTheStylesOfAnR2010FileWrittenByAutoCad()
 	{
 		//R2010 stores 28 entries; before this was understood the reader stopped after the name.
