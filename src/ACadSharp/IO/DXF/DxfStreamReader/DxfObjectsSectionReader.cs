@@ -2272,7 +2272,7 @@ internal class DxfObjectsSectionReader : DxfSectionReaderBase
 			case DxfFileToken.ObjectTableContent:
 				return this.readObjectCodes<TableContent>(new CadTableContentTemplate(), this.readTableContent);
 			case DxfFileToken.ObjectVisualStyle:
-				return this.readObjectCodes<VisualStyle>(new CadTemplate<VisualStyle>(new VisualStyle()), this.readVisualStyle);
+				return this.readObjectCodes<VisualStyle>(new CadVisualStyleTemplate(), this.readVisualStyle);
 			case DxfFileToken.ObjectSpatialFilter:
 				return this.readObjectCodes<SpatialFilter>(new CadSpatialFilterTemplate(), this.readSpatialFilter);
 			case DxfFileToken.ObjectMLineStyle:
@@ -3100,18 +3100,72 @@ internal class DxfObjectsSectionReader : DxfSectionReaderBase
 		}
 	}
 
+	/// <summary>
+	/// Reads the R2013+ property list of a visual style. The list is positional: each entry is a
+	/// value followed by its flag (group code 176), and the position identifies the property, so the
+	/// entries are rebuilt in the order they appear in the file.
+	/// </summary>
 	private bool readVisualStyle(CadTemplate template, DxfMap map)
 	{
+		CadVisualStyleTemplate tmp = (CadVisualStyleTemplate)template;
+		VisualStyle visualStyle = tmp.CadObject;
+
 		switch (this._reader.Code)
 		{
-			// Undocumented codes
-			case 176:
+			case 2:
+				visualStyle.Name = this._reader.ValueAsString;
+				return true;
+			case 70:
+				//The first 70 is the type of the style, the second one the number of entries that
+				//follow; the count is implied by the layout, so it is not stored.
+				if (!tmp.TypeRead)
+				{
+					visualStyle.Type = this._reader.ValueAsInt;
+					tmp.TypeRead = true;
+				}
+
+				return true;
 			case 177:
+				//Layout version: AutoCAD writes 3 here and 2 in DWG, the model keeps the DWG value.
+				return true;
+			case 291:
+				visualStyle.InternalFlag = this._reader.ValueAsBool;
+				return true;
+			case 90:
+				visualStyle.Properties.Add(new VisualStyleProperty(VisualStylePropertyType.Integer, this._reader.ValueAsInt));
+				return true;
+			case 40:
+				visualStyle.Properties.Add(new VisualStyleProperty(VisualStylePropertyType.Double, this._reader.ValueAsDouble));
+				return true;
+			case 290:
+				visualStyle.Properties.Add(new VisualStyleProperty(VisualStylePropertyType.Boolean, this._reader.ValueAsBool));
+				return true;
+			case 1:
+				visualStyle.Properties.Add(new VisualStyleProperty(VisualStylePropertyType.String, this._reader.ValueAsString));
+				return true;
+			case 62:
+				visualStyle.Properties.Add(new VisualStyleProperty(VisualStylePropertyType.Color, new Color((short)this._reader.ValueAsShort)));
+				return true;
 			case 420:
+				//True colour of the entry that was just read with its index.
+				if (visualStyle.Properties.Count > 0)
+				{
+					VisualStyleProperty last = visualStyle.Properties[visualStyle.Properties.Count - 1];
+					if (last.ValueType == VisualStylePropertyType.Color)
+					{
+						last.Value = Color.FromTrueColor((uint)this._reader.ValueAsInt);
+					}
+				}
+
+				return true;
+			case 176:
+				if (visualStyle.Properties.Count > 0)
+				{
+					visualStyle.Properties[visualStyle.Properties.Count - 1].Flag = this._reader.ValueAsShort;
+				}
+
 				return true;
 			default:
-				//Avoid noise while is not implemented
-				return true;
 				return this.tryAssignCurrentValue(template.CadObject, map.SubClasses[DxfSubclassMarker.VisualStyle]);
 		}
 	}

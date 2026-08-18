@@ -144,6 +144,51 @@ public class VisualStyleTests
 	}
 
 	[Fact]
+	public void DxfRoundTripPreservesEveryProperty()
+	{
+		CadDocument doc = new CadDocument(ACadVersion.AC1032);
+
+		MemoryStream ms = new MemoryStream();
+		DxfWriter.Write(ms, doc, false);
+		using MemoryStream readStream = new MemoryStream(ms.ToArray());
+		CadDocument rt = DxfReader.Read(readStream);
+
+		Assert.True(doc.RootDictionary.TryGetEntry(CadDictionary.AcadVisualStyle, out CadDictionary original));
+		Assert.True(rt.RootDictionary.TryGetEntry(CadDictionary.AcadVisualStyle, out CadDictionary result));
+		Assert.Equal(original.Count(), result.Count());
+
+		foreach (VisualStyle style in original.OfType<VisualStyle>())
+		{
+			Assert.True(result.TryGetEntry(style.Name, out VisualStyle got), $"{style.Name} is missing after the dxf round trip");
+			Assert.Equal(style.Type, got.Type);
+			Assert.Equal(style.InternalFlag, got.InternalFlag);
+			Assert.Equal(style.Properties.Count, got.Properties.Count);
+
+			for (int i = 0; i < style.Properties.Count; i++)
+			{
+				VisualStyleProperty expected = style.Properties[i];
+				VisualStyleProperty actual = got.Properties[i];
+
+				Assert.Equal(expected.ValueType, actual.ValueType);
+				Assert.Equal(expected.Flag, actual.Flag);
+				switch (expected.ValueType)
+				{
+					case VisualStylePropertyType.Double:
+						Assert.Equal(expected.AsDouble(), actual.AsDouble(), 9);
+						break;
+					case VisualStylePropertyType.Color:
+						//DXF stores the index and, for a true colour, the rgb value.
+						Assert.Equal(expected.AsColor().IsTrueColor, actual.AsColor().IsTrueColor);
+						break;
+					default:
+						Assert.Equal(expected.Value, actual.Value);
+						break;
+				}
+			}
+		}
+	}
+
+	[Fact]
 	public void ReadsTheStylesOfAFileWrittenByAutoCad()
 	{
 		string path = Path.Combine(TestVariables.SamplesFolder, "sample_base", "empty.dwg");
