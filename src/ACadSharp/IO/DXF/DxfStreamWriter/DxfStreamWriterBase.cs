@@ -79,23 +79,10 @@ internal abstract class DxfStreamWriterBase : IDxfStreamWriter
 		}
 		else
 		{
-			byte[] arr = new byte[4];
-
-			if (color.IsTrueColor)
-			{
-				arr[0] = (byte)color.B;
-				arr[1] = (byte)color.G;
-				arr[2] = (byte)color.R;
-				arr[3] = 0b1100_0010;   //	0xC2
-			}
-			else
-			{
-				arr[3] = 0b1100_0001;
-				arr[0] = (byte)color.Index;
-			}
-
-			//BL: RGB value
-			this.Write(code, LittleEndianConverter.Instance.ToInt32(arr), map);
+			//BL: the whole colour packed into one word, method byte on top. Writing 0xC1 for
+			//every colour that is not a true colour said "by block" for all of them, and the
+			//index went through a byte, so ByLayer (256) came out as 0 and ByEntity (257) as 1.
+			this.Write(code, color.ToDxfColorWord(), map);
 		}
 	}
 

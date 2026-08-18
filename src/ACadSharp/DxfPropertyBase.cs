@@ -212,6 +212,15 @@ namespace ACadSharp
 						// true color
 						this._property.SetValue(obj, new Color(b[2], b[1], b[0]));
 						break;
+					default:
+						//The group codes that carry a whole colour in one 32 bit word, such as 90 to
+						//94 of MULTILEADER and MLEADERSTYLE. Without this the value was read and
+						//dropped, and every one of those colours came back as its default.
+						if (GroupCodeValue.TransformValue(code) == GroupCodeValueType.Int32)
+						{
+							this._property.SetValue(obj, Color.FromDxfColorWord(Convert.ToInt32(value)));
+						}
+						break;
 				}
 			}
 			else if (_property.PropertyType.IsEquivalentTo(typeof(PaperMargin)))
@@ -297,15 +306,19 @@ namespace ACadSharp
 					case 62:
 						this._property.SetValue(obj, new Color((short)value));
 						break;
-					case 90:
-						byte[] b = LittleEndianConverter.Instance.GetBytes((int)(value));
+					case 420:
+						byte[] b = LittleEndianConverter.Instance.GetBytes((int)value);
 						// true color
 						this._property.SetValue(obj, new Color(b[2], b[1], b[0]));
 						break;
-					case 420:
-						b = LittleEndianConverter.Instance.GetBytes((int)value);
-						// true color
-						this._property.SetValue(obj, new Color(b[2], b[1], b[0]));
+					default:
+						//The group codes that carry a whole colour in one 32 bit word. Reading them
+						//as a plain true colour turned ByLayer into black, since the method byte was
+						//taken for the red channel.
+						if (GroupCodeValue.TransformValue(code) == GroupCodeValueType.Int32)
+						{
+							this._property.SetValue(obj, Color.FromDxfColorWord(Convert.ToInt32(value)));
+						}
 						break;
 				}
 			}
@@ -453,6 +466,12 @@ namespace ACadSharp
 						return color.TrueColor;
 					case 430:
 						// dictionary color
+						break;
+					default:
+						if (GroupCodeValue.TransformValue(code) == GroupCodeValueType.Int32)
+						{
+							return color.ToDxfColorWord();
+						}
 						break;
 				}
 

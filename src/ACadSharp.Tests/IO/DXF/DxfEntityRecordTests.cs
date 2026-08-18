@@ -1,9 +1,11 @@
 using ACadSharp.Entities;
 using ACadSharp.IO;
+using ACadSharp.Objects;
 using CSMath;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Xunit;
 
@@ -59,6 +61,56 @@ namespace ACadSharp.Tests.IO.DXF
 
 			(int, string) pair = Assert.Single(record, p => p.Item1 == 340);
 			Assert.Equal(annotation.Handle.ToString("X"), pair.Item2.Trim());
+		}
+
+		[Fact]
+		public void ColourWordsOfAnMLeaderStyleCarryTheMethodByte()
+		{
+			//Group codes 90 to 94 of MULTILEADER and MLEADERSTYLE hold a whole colour in one word:
+			//the method in the high byte, the colour in the three low ones. AutoCAD writes 0xC0 for
+			//ByLayer, 0xC1 for ByBlock, 0xC2 for a true colour and 0xC3 for an index. Writing 0xC1
+			//for everything that was not a true colour called all of them "by block", and the index
+			//went through a byte, so ByLayer (256) came out as 0.
+			CadDocument doc = new CadDocument();
+			MultiLeaderStyle style = doc.MLeaderStyles["Standard"];
+			style.LineColor = new Color(5);
+			style.TextColor = Color.ByLayer;
+			style.BlockContentColor = Color.ByBlock;
+
+			List<(int, string)> record = this.recordOf(doc, "MLEADERSTYLE");
+
+			Assert.Equal(unchecked((int)0xC3000005), word(record, 91));
+			Assert.Equal(unchecked((int)0xC0000000), word(record, 93));
+			Assert.Equal(unchecked((int)0xC1000000), word(record, 94));
+		}
+
+		[Fact]
+		public void DxfRoundTripKeepsTheColoursOfAnMLeaderStyle()
+		{
+			CadDocument doc = new CadDocument();
+			MultiLeaderStyle style = doc.MLeaderStyles["Standard"];
+			style.LineColor = new Color(5);
+			style.TextColor = Color.ByLayer;
+			style.BlockContentColor = Color.ByBlock;
+
+			MemoryStream stream = new MemoryStream();
+			using (DxfWriter writer = new DxfWriter(stream, doc, false))
+			{
+				writer.Write();
+			}
+
+			using MemoryStream readStream = new MemoryStream(stream.ToArray());
+			MultiLeaderStyle got = DxfReader.Read(readStream).MLeaderStyles["Standard"];
+
+			Assert.Equal(new Color(5), got.LineColor);
+			Assert.Equal(Color.ByLayer, got.TextColor);
+			Assert.Equal(Color.ByBlock, got.BlockContentColor);
+		}
+
+		private static int word(List<(int, string)> record, int code)
+		{
+			(int, string) pair = Assert.Single(record, p => p.Item1 == code);
+			return int.Parse(pair.Item2.Trim(), System.Globalization.CultureInfo.InvariantCulture);
 		}
 
 		private static Hatch createHatch()
