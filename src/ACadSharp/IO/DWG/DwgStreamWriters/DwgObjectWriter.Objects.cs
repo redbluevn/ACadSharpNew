@@ -51,7 +51,7 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			case AecBinRecord:
 			case DimensionAssociation:
 			case UnknownNonGraphicalObject:
-			case VisualStyle:
+			case VisualStyle visualStyle when !this.canWriteVisualStyle(visualStyle):
 			case ProxyObject:
 			case BlockReferenceObjectContextData:
 			case MTextAttributeObjectContextData:
@@ -1365,6 +1365,57 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		this._writer.WriteVariableText(col.ConnectionName);
 	}
 
+	/// <summary>
+	/// A <see cref="VisualStyle"/> can only be written when the file format uses the positional
+	/// property list (R2013 and newer) and the style carries a complete list; the layout used by
+	/// older versions is not implemented, and padding an incomplete list would mean inventing values.
+	/// </summary>
+	private bool canWriteVisualStyle(VisualStyle visualStyle)
+	{
+		return this.R2013Plus && visualStyle.Properties.Count == VisualStyle.PropertyCount;
+	}
+
+	private void writeVisualStyle(VisualStyle visualStyle)
+	{
+		//2 Name, written in the text stream for R2007+
+		this._writer.WriteVariableText(visualStyle.Name);
+		//70 Type
+		this._writer.WriteBitLong(visualStyle.Type);
+		//177 Property list version
+		this._writer.WriteBitShort(visualStyle.PropertyListVersion);
+		//291 Internal use only flag
+		this._writer.WriteBit(visualStyle.InternalFlag);
+
+		//The entry count is not stored, it is implied by the layout version.
+		for (int i = 0; i < VisualStyle.PropertyCount; i++)
+		{
+			VisualStyleProperty property = visualStyle.Properties[i];
+			switch (VisualStyle.GetPropertyType(i))
+			{
+				case VisualStylePropertyType.Integer:
+					this._writer.WriteBitLong(property.AsInt());
+					break;
+				case VisualStylePropertyType.Double:
+					this._writer.WriteBitDouble(property.AsDouble());
+					break;
+				case VisualStylePropertyType.Boolean:
+					this._writer.WriteBit(property.AsBool());
+					break;
+				case VisualStylePropertyType.Color:
+					this._writer.WriteCmColor(property.AsColor());
+					break;
+				case VisualStylePropertyType.String:
+					this._writer.WriteVariableText(property.AsString() ?? string.Empty);
+					break;
+				default:
+					throw new NotSupportedException($"Unknown visual style property type at index {i}");
+			}
+
+			//176 Flag of the entry
+			this._writer.WriteBitShort(property.Flag);
+		}
+	}
+
 	private void writeMaterial(Material material)
 	{
 		// 1, 2 -- name + description as bit-text.
@@ -1897,6 +1948,9 @@ internal partial class DwgObjectWriter : DwgSectionIO
 				break;
 			case FieldList fieldList:
 				this.writeFieldList(fieldList);
+				break;
+			case VisualStyle visualStyle:
+				this.writeVisualStyle(visualStyle);
 				break;
 			case XRecord record:
 				this.writeXRecord(record);

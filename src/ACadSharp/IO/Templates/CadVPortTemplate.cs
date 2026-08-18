@@ -42,9 +42,13 @@ namespace ACadSharp.IO.Templates
 				builder.Notify($"Boundary {this.BaseUcsHandle} not found for viewport {this.CadObject.Handle}", NotificationType.Warning);
 			}
 
-			if (builder.TryGetCadObject(this.StyleHandle, out CadObject style))
+			if (builder.TryGetCadObject(this.StyleHandle, out Objects.VisualStyle visualStyle))
 			{
-
+				this.CadObject.VisualStyle = visualStyle;
+			}
+			else if (this.StyleHandle.HasValue && this.StyleHandle > 0)
+			{
+				builder.Notify($"Visual style {this.StyleHandle} not found for vport {this.CadObject.Name}", NotificationType.Warning);
 			}
 		}
 	}
