@@ -3,6 +3,8 @@ using ACadSharp.IO;
 using ACadSharp.Objects;
 using ACadSharp.Tables;
 using CSMath;
+using ACadSharp.XData;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Xunit;
@@ -452,6 +454,51 @@ public class VisualStyleTests
 					Assert.Equal(style.Properties[i].Value, got.Properties[i].Value);
 				}
 			}
+		}
+	}
+
+	[Theory]
+	[InlineData(ACadVersion.AC1015)]
+	[InlineData(ACadVersion.AC1018)]
+	[InlineData(ACadVersion.AC1024)]
+	[InlineData(ACadVersion.AC1032)]
+	public void TheObjectVersionGoesIntoTheDataTheStyleAlreadyHas(ACadVersion version)
+	{
+		//Before R2013 AutoCAD gives every visual style the extended data ACAD/AcDbSavedByObjectVersion
+		//and a drawing whose styles lack it is refused as an invalid file. A style that already keeps
+		//data of its own under ACAD gets the record appended to that entry, not a second entry of the
+		//same application: a real drawing with three such styles could not be opened at all.
+		CadDocument doc = new CadDocument();
+		doc.Header.Version = version;
+
+		doc.RootDictionary.TryGetEntry(CadDictionary.AcadVisualStyle, out CadDictionary styles);
+		VisualStyle style = styles.OfType<VisualStyle>().First();
+
+		style.ExtendedData.Add(doc.AppIds[AppId.DefaultName], new ExtendedDataRecord[]
+		{
+			new ExtendedDataString("AcRTDxfName"),
+			new ExtendedDataString("VISUALSTYLE"),
+		});
+
+		MemoryStream ms = new MemoryStream();
+		using (DwgWriter writer = new DwgWriter(ms, doc))
+		{
+			writer.Write();
+		}
+
+		CadDocument rt = DwgReader.Read(new MemoryStream(ms.ToArray()));
+		Assert.True(rt.RootDictionary.TryGetEntry(CadDictionary.AcadVisualStyle, out CadDictionary rtStyles));
+		VisualStyle got = rtStyles.OfType<VisualStyle>().First(s => s.Name == style.Name);
+
+		ExtendedData acad = Assert.Single(got.ExtendedData.Where(e => e.Key.Name == AppId.DefaultName)).Value;
+		List<string> strings = acad.Records.OfType<ExtendedDataString>().Select(r => r.Value).ToList();
+
+		Assert.Contains("AcRTDxfName", strings);
+		Assert.Contains("VISUALSTYLE", strings);
+
+		if (version < ACadVersion.AC1027)
+		{
+			Assert.Equal(1, strings.Count(v => v == "AcDbSavedByObjectVersion"));
 		}
 	}
 }
