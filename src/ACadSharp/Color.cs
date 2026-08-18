@@ -441,6 +441,77 @@ namespace ACadSharp
 		private readonly uint _color;
 
 		/// <summary>
+		/// Method byte of the packed colour word DXF uses for the group codes that carry a whole
+		/// colour in a 32 bit integer, such as 90 to 94 of MULTILEADER and MLEADERSTYLE.
+		/// </summary>
+		/// <remarks>
+		/// Taken from the DXF files AutoCAD writes: every such word in samples/*_ascii.dxf and in the
+		/// exports of oracle/acc_out carries one of these in its high byte, and nothing else.
+		/// </remarks>
+		private enum ColorMethod : byte
+		{
+			ByLayer = 0xC0,
+			ByBlock = 0xC1,
+			TrueColor = 0xC2,
+			Indexed = 0xC3,
+			None = 0xC8,
+		}
+
+		/// <summary>
+		/// Packs the colour the way DXF stores it in a 32 bit group code: the method in the high
+		/// byte, and the colour itself in the three low bytes.
+		/// </summary>
+		internal int ToDxfColorWord()
+		{
+			if (this.IsTrueColor)
+			{
+				return ((int)ColorMethod.TrueColor << 24) | (this.TrueColor & 0xFFFFFF);
+			}
+
+			if (this.IsByLayer)
+			{
+				return (int)ColorMethod.ByLayer << 24;
+			}
+
+			if (this.IsByBlock)
+			{
+				return (int)ColorMethod.ByBlock << 24;
+			}
+
+			//257, the "none" of an entity colour, which has no room in the index byte either.
+			if (this.Index == 257)
+			{
+				return (int)ColorMethod.None << 24;
+			}
+
+			return ((int)ColorMethod.Indexed << 24) | (this.Index & 0xFF);
+		}
+
+		/// <summary>
+		/// Reads back what <see cref="ToDxfColorWord"/> writes.
+		/// </summary>
+		internal static Color FromDxfColorWord(int value)
+		{
+			uint word = (uint)value;
+			switch ((ColorMethod)(byte)(word >> 24))
+			{
+				case ColorMethod.ByLayer:
+					return ByLayer;
+				case ColorMethod.ByBlock:
+					return ByBlock;
+				case ColorMethod.TrueColor:
+					return new Color((byte)(word >> 16), (byte)(word >> 8), (byte)word);
+				case ColorMethod.None:
+					return ByEntity;
+				case ColorMethod.Indexed:
+				default:
+					//A word without a method byte is written by AutoCAD as a plain 0; reading the low
+					//byte turns that into the index 0, which is ByBlock, the same thing 0xC1 means.
+					return new Color((short)(word & 0xFF));
+			}
+		}
+
+		/// <summary>
 		/// Creates a new color out of an indexed color.
 		/// </summary>
 		/// <param name="index">Index color with a value between 0 to 257</param>
