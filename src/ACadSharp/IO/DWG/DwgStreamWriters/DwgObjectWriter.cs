@@ -103,6 +103,45 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		this._objects.Enqueue(obj);
 	}
 
+	/// <summary>
+	/// The inserts of model space that reference a block, gathered once for the whole write.
+	/// </summary>
+	/// <remarks>
+	/// The block header used to answer this by walking every entity of model space, twice per block
+	/// record - once for the count and once for the handles. A production drawing with 40843 block records and 155447 model space entities turned
+	/// that into billions of type checks: 55% of the samples of a profile of the write sat in the
+	/// cast helper, and writing the drawing took 46 seconds.
+	/// </remarks>
+	private IReadOnlyList<Insert> modelSpaceInserts(string blockName)
+	{
+		if (this._modelSpaceInserts == null)
+		{
+			this._modelSpaceInserts = new Dictionary<string, List<Insert>>(StringComparer.Ordinal);
+			foreach (Entity entity in this._document.Entities)
+			{
+				if (entity is Insert insert && insert.Block?.Name != null)
+				{
+					if (!this._modelSpaceInserts.TryGetValue(insert.Block.Name, out List<Insert> list))
+					{
+						list = new List<Insert>();
+						this._modelSpaceInserts.Add(insert.Block.Name, list);
+					}
+
+					list.Add(insert);
+				}
+			}
+		}
+
+		if (blockName != null && this._modelSpaceInserts.TryGetValue(blockName, out List<Insert> found))
+		{
+			return found;
+		}
+
+		return Array.Empty<Insert>();
+	}
+
+	private Dictionary<string, List<Insert>> _modelSpaceInserts;
+
 	private Entity[] getCompatibleEntities(IEnumerable<Entity> entities)
 	{
 		return entities.Where(e => this.isEntitySupported(e)).ToArray();
@@ -340,8 +379,8 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		if (this.R2000Plus)
 		{
 			//Insert Count RC A sequence of zero or more non-zero RC’s, followed by a terminating 0 RC.The total number of these indicates how many insert handles will be present.
-			foreach (var item in this._document.Entities.OfType<Insert>()
-				.Where(i => i.Block?.Name == record?.Name))
+			IReadOnlyList<Insert> inserts = this.modelSpaceInserts(record.Name);
+			for (int i = 0; i < inserts.Count; i++)
 			{
 				this._writer.WriteByte(1);
 			}
@@ -408,8 +447,7 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		//R2000+:
 		if (this.R2000Plus)
 		{
-			foreach (var item in this._document.Entities.OfType<Insert>()
-				.Where(i => i.Block?.Name == record.Name))
+			foreach (Insert item in this.modelSpaceInserts(record.Name))
 			{
 				this._writer.HandleReference(DwgReferenceType.SoftPointer, item);
 			}
