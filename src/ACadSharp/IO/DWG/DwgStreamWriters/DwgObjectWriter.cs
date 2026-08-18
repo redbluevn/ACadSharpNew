@@ -287,9 +287,11 @@ internal partial class DwgObjectWriter : DwgSectionIO
 
 		this.writeCommonNonEntityData(record);
 
+		BlockTypeFlags flags = CadUtils.EffectiveBlockFlags(record.Flags, record.Name);
+
 		//Common:
 		//Entry name TV 2
-		if (record.Flags.HasFlag(BlockTypeFlags.Anonymous))
+		if (flags.HasFlag(BlockTypeFlags.Anonymous))
 		{
 			//Warning: anonymous blocks do not write the full name, only *{type character}
 			this._writer.WriteVariableText(record.Name.Substring(0, 2));
@@ -307,7 +309,7 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		this.writeXrefDependantBit(record);
 
 		//Anonymous B 1 if this is an anonymous block (1 bit)
-		this._writer.WriteBit(record.Flags.HasFlag(BlockTypeFlags.Anonymous));
+		this._writer.WriteBit(flags.HasFlag(BlockTypeFlags.Anonymous));
 
 		//Hasatts B 1 if block contains attdefs (2 bit)
 		this._writer.WriteBit(record.HasAttributes);
