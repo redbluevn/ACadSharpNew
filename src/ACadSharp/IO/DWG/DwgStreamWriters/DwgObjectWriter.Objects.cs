@@ -1374,6 +1374,14 @@ internal partial class DwgObjectWriter : DwgSectionIO
 	{
 		if (this.R2010Plus)
 		{
+			if (visualStyle.Properties.Count < VisualStyle.GetPropertyCount(this._version))
+			{
+				//Read from a version that keeps the named fields instead of the list. Build the list
+				//from them, or the style is silently dropped when an older drawing is saved as a
+				//newer one.
+				visualStyle.BuildPropertyList();
+			}
+
 			return visualStyle.Properties.Count >= VisualStyle.GetPropertyCount(this._version);
 		}
 
