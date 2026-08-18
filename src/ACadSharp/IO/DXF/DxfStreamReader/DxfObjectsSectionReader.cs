@@ -2215,6 +2215,20 @@ internal class DxfObjectsSectionReader : DxfSectionReaderBase
 				tmp.ElementTemplates.Add(elementTemplate);
 				mLineStyle.AddElement(element);
 				return true;
+			case 62:
+				//Group code 62 appears once for the style, before the elements, and then once per
+				//element. Letting the map assign every one of them put each element colour into
+				//FillColor and left the elements at their default.
+				MLineStyle.Element last = mLineStyle.Elements.LastOrDefault();
+				if (last == null)
+				{
+					mLineStyle.FillColor = new Color(this._reader.ValueAsShort);
+				}
+				else
+				{
+					last.Color = new Color(this._reader.ValueAsShort);
+				}
+				return true;
 			default:
 				return this.tryAssignCurrentValue(template.CadObject, map.SubClasses[tmp.CadObject.SubclassMarker]);
 		}
