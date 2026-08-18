@@ -8,6 +8,84 @@ namespace ACadSharp;
 
 internal static class CadUtils
 {
+
+		/// <summary>
+		/// Escapes the characters a code page cannot hold, the way AutoCAD does when it saves a
+		/// drawing older than R2007.
+		/// </summary>
+		/// <remarks>
+		/// Before R2007 a drawing stores its text in a code page, not in Unicode. AutoCAD keeps the
+		/// characters that code page covers and writes the rest as <c>\U+XXXX</c>: saving a drawing
+		/// whose blocks have Vietnamese names as R2000 turns
+		/// <c>Mặt bằng</c> into <c>M\U+1EB7t b\U+1EB1ng</c>. Encoding such a name straight into the
+		/// code page turns every one of those characters into a question mark, and AutoCAD then
+		/// rejects the name and drops the block.
+		/// </remarks>
+		public static string EscapeUnsupportedCharacters(string value, System.Text.Encoding encoding)
+		{
+			if (string.IsNullOrEmpty(value) || encoding == null)
+			{
+				return value;
+			}
+
+			System.Text.StringBuilder sb = null;
+			for (int i = 0; i < value.Length; i++)
+			{
+				char c = value[i];
+				bool supported = c < 128 || encoding.GetString(encoding.GetBytes(c.ToString())) == c.ToString();
+				if (supported)
+				{
+					sb?.Append(c);
+					continue;
+				}
+
+				if (sb == null)
+				{
+					sb = new System.Text.StringBuilder(value.Length + 8);
+					sb.Append(value, 0, i);
+				}
+
+				sb.Append("\\U+").Append(((int)c).ToString("X4"));
+			}
+
+			return sb == null ? value : sb.ToString();
+		}
+
+		/// <summary>
+		/// Reads back what <see cref="EscapeUnsupportedCharacters"/> writes, and what AutoCAD writes
+		/// for the same reason.
+		/// </summary>
+		public static string UnescapeUnicodeCharacters(string value)
+		{
+			if (string.IsNullOrEmpty(value) || value.IndexOf("\\U+", System.StringComparison.Ordinal) < 0)
+			{
+				return value;
+			}
+
+			System.Text.StringBuilder sb = new System.Text.StringBuilder(value.Length);
+			for (int i = 0; i < value.Length; i++)
+			{
+				if (i + 6 < value.Length + 1
+					&& value[i] == '\\' && i + 2 < value.Length && value[i + 1] == 'U' && value[i + 2] == '+'
+					&& i + 6 < value.Length
+					&& isHex(value[i + 3]) && isHex(value[i + 4]) && isHex(value[i + 5]) && isHex(value[i + 6]))
+				{
+					sb.Append((char)System.Convert.ToInt32(value.Substring(i + 3, 4), 16));
+					i += 6;
+					continue;
+				}
+
+				sb.Append(value[i]);
+			}
+
+			return sb.ToString();
+		}
+
+		private static bool isHex(char c)
+		{
+			return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
+		}
+
 	private static Dictionary<string, CodePage> _dxfEncodingMap = new Dictionary<string, CodePage>
 	{
 		{"gb2312"    ,CodePage.Gb2312},

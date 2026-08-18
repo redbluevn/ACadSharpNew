@@ -883,7 +883,8 @@ namespace ACadSharp.IO.DWG
 			string str;
 			if (length > 0)
 			{
-				str = this.ReadString(length, this.Encoding).Replace("\0", "");
+				//AutoCAD escapes what the code page cannot hold; read it back as the character.
+				str = CadUtils.UnescapeUnicodeCharacters(this.ReadString(length, this.Encoding).Replace("\0", ""));
 			}
 			else
 				str = string.Empty;

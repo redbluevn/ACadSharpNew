@@ -267,7 +267,9 @@ namespace ACadSharp.IO.DWG
 				return;
 			}
 
-			byte[] bytes = this.Encoding.GetBytes(value);
+			//A drawing before R2007 stores its text in a code page. Anything that code page cannot
+			//hold has to be escaped, or it becomes a question mark and AutoCAD rejects the value.
+			byte[] bytes = this.Encoding.GetBytes(CadUtils.EscapeUnsupportedCharacters(value, this.Encoding));
 			this.WriteBitShort((short)bytes.Length);
 			this.WriteBytes(bytes);
 		}
