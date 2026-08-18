@@ -42,7 +42,7 @@ public class DxfViewportBoundaryTests
 		CadDocument rt = DxfReader.Read(readStream);
 
 		//Paper space also holds the overall viewport, which has no boundary.
-		Viewport got = Assert.Single(rt.PaperSpace.Entities.OfType<Viewport>().Where(v => v.Boundary != null));
+		Viewport got = Assert.Single(rt.PaperSpace.Entities.OfType<Viewport>(), v => v.Boundary != null);
 		Assert.IsType<LwPolyline>(got.Boundary);
 		Assert.Equal(boundary.Handle, got.Boundary.Handle);
 	}
