@@ -1065,13 +1065,30 @@ internal partial class DwgObjectWriter : DwgSectionIO
 	{
 		if (this.WriteXData)
 		{
+			bool addVersion = this.needsVisualStyleObjectVersion(owner, data);
+
 			//EED size BS size of extended entity data, if any
 			foreach (var item in data)
 			{
+				if (addVersion && item.Key.Name == AppId.DefaultName)
+				{
+					//The object already carries data of its own under ACAD; the version goes at the
+					//end of that same entry, which is where AutoCAD puts it. Writing a second entry
+					//for the same application would leave the file unreadable.
+					List<ExtendedDataRecord> records = new List<ExtendedDataRecord>(item.Value.Records);
+					records.AddRange(this.visualStyleObjectVersion());
+					this.writeExtendedDataEntry(item.Key, new ExtendedData(records));
+					addVersion = false;
+					continue;
+				}
+
 				this.writeExtendedDataEntry(item.Key, item.Value);
 			}
 
-			this.writeVisualStyleObjectVersion(owner, data);
+			if (addVersion && this._document.AppIds.TryGetValue(AppId.DefaultName, out AppId app))
+			{
+				this.writeExtendedDataEntry(app, new ExtendedData(this.visualStyleObjectVersion()));
+			}
 		}
 
 		this._writer.WriteBitShort(0);
@@ -1079,26 +1096,31 @@ internal partial class DwgObjectWriter : DwgSectionIO
 
 	/// <summary>
 	/// Every VISUALSTYLE that AutoCAD writes before R2013 carries the extended data
-	/// <c>ACAD / AcDbSavedByObjectVersion / 0</c>. A drawing whose visual styles lack it is refused
-	/// as an invalid file, so add the record when the object does not carry it already.
+	/// <c>ACAD / AcDbSavedByObjectVersion / 0</c>, at the end of whatever else the object keeps
+	/// under that application. A drawing whose visual styles lack it is refused as an invalid file.
 	/// </summary>
-	private void writeVisualStyleObjectVersion(CadObject owner, ExtendedDataDictionary data)
+	private bool needsVisualStyleObjectVersion(CadObject owner, ExtendedDataDictionary data)
 	{
-		if (this.R2013Plus || owner is not VisualStyle || data.ContainsKeyName(AppId.DefaultName))
+		if (this.R2013Plus || owner is not VisualStyle)
 		{
-			return;
+			return false;
 		}
 
-		if (!this._document.AppIds.TryGetValue(AppId.DefaultName, out AppId app))
+		if (!data.TryGet(AppId.DefaultName, out ExtendedData acad))
 		{
-			return;
+			return true;
 		}
 
-		this.writeExtendedDataEntry(app, new ExtendedData(new ExtendedDataRecord[]
+		return !acad.Records.OfType<ExtendedDataString>().Any(r => r.Value == "AcDbSavedByObjectVersion");
+	}
+
+	private IEnumerable<ExtendedDataRecord> visualStyleObjectVersion()
+	{
+		return new ExtendedDataRecord[]
 		{
 			new ExtendedDataString("AcDbSavedByObjectVersion"),
 			new ExtendedDataInteger16(0),
-		}));
+		};
 	}
 
 	private void writeExtendedDataEntry(AppId app, ExtendedData entry)
