@@ -890,21 +890,15 @@ internal abstract class DxfSectionReaderBase
 		CadHatchTemplate tmp = template as CadHatchTemplate;
 		Hatch hatch = tmp.CadObject;
 
-		XY seedPoint = new XY();
-
 		switch (this._reader.Code)
 		{
 			case 2:
 				hatch.Pattern.Name = this._reader.ValueAsString;
 				return true;
+			//Elevation point of the hatch; the reference says its X and Y are always 0, and the
+			//seed points come after the count in group code 98, not here.
 			case 10:
-				seedPoint.X = this._reader.ValueAsDouble;
-				hatch.SeedPoints.Add(seedPoint);
-				return true;
 			case 20:
-				seedPoint = hatch.SeedPoints.LastOrDefault();
-				seedPoint.Y = this._reader.ValueAsDouble;
-				hatch.SeedPoints[hatch.SeedPoints.Count - 1] = seedPoint;
 				return true;
 			case 30:
 				hatch.Elevation = this._reader.ValueAsDouble;
@@ -928,8 +922,10 @@ internal abstract class DxfSectionReaderBase
 				this.readLoops(tmp, this._reader.ValueAsInt);
 				this.lockPointer = true;
 				return true;
-			//Number of seed points
+			//Number of seed points, followed by that many 10/20 pairs
 			case 98:
+				this.readSeedPoints(hatch, this._reader.ValueAsInt);
+				this.lockPointer = true;
 				return true;
 			case 450:
 				hatch.GradientColor.Enabled = this._reader.ValueAsBool;
@@ -1534,6 +1530,16 @@ internal abstract class DxfSectionReaderBase
 					wipeout.ClipBoundaryVertices.Add(new XY(x, y));
 				}
 
+				//A polygonal boundary is closed in DXF by repeating the first vertex at the end, and
+				//the writer adds it. The model holds the open boundary, as the DWG does, so drop the
+				//repeat; without this a DXF round trip grows the boundary by one vertex every time.
+				if (wipeout.ClipType == ClipType.Polygonal
+					&& wipeout.ClipBoundaryVertices.Count > 2
+					&& wipeout.ClipBoundaryVertices[0].Equals(wipeout.ClipBoundaryVertices[wipeout.ClipBoundaryVertices.Count - 1]))
+				{
+					wipeout.ClipBoundaryVertices.RemoveAt(wipeout.ClipBoundaryVertices.Count - 1);
+				}
+
 				this._reader.ReadNext();
 
 				return this.checkEntityEnd(template, map, subclass, this.readWipeoutBase);
@@ -1948,6 +1954,40 @@ internal abstract class DxfSectionReaderBase
 			}
 
 			pattern.Lines.Add(line);
+		}
+	}
+
+	/// <summary>
+	/// Reads the seed points that follow the count in group code 98.
+	/// </summary>
+	/// <remarks>
+	/// They have to be read here and not from the group code 10 of the record: a HATCH starts with
+	/// an elevation point that uses the same code, so treating every 10 as a seed point gave every
+	/// hatch read from a DXF one seed point too many.
+	/// </remarks>
+	private void readSeedPoints(Hatch hatch, int count)
+	{
+		//Jump the 98 code
+		this._reader.ReadNext();
+
+		for (int i = 0; i < count; i++)
+		{
+			if (this._reader.Code != 10)
+			{
+				this._builder.Notify($"Hatch seed point should start with code 10 but was {this._reader.Code}");
+				break;
+			}
+
+			XY seed = new XY(this._reader.ValueAsDouble, 0);
+			this._reader.ReadNext();
+
+			if (this._reader.Code == 20)
+			{
+				seed.Y = this._reader.ValueAsDouble;
+				this._reader.ReadNext();
+			}
+
+			hatch.SeedPoints.Add(seed);
 		}
 	}
 
