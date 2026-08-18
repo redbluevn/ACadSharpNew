@@ -1675,7 +1675,7 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		//2 : 71's bit 2 (4)
 		this._writer.WriteBit(view.ViewMode.HasFlag(ViewModeType.BackClipping));
 		//3 : OPPOSITE of 71's bit 4 (16)
-		this._writer.WriteBit(view.ViewMode.HasFlag(ViewModeType.FrontClippingZ));
+		this._writer.WriteBit(!view.ViewMode.HasFlag(ViewModeType.FrontClippingZ));
 
 		//R2000+:
 		if (this.R2000Plus)
@@ -1799,7 +1799,7 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		//2 : 71's bit 2 (4)
 		this._writer.WriteBit(vport.ViewMode.HasFlag(ViewModeType.BackClipping));
 		//3 : OPPOSITE of 71's bit 4 (16)
-		this._writer.WriteBit(vport.ViewMode.HasFlag(ViewModeType.FrontClippingZ));
+		this._writer.WriteBit(!vport.ViewMode.HasFlag(ViewModeType.FrontClippingZ));
 
 		//R2000+:
 		if (this.R2000Plus)

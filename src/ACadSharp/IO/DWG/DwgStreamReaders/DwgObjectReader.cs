@@ -6697,6 +6697,10 @@ namespace ACadSharp.IO.DWG
 
 			//View mode X 71 4 bits: 0123
 			//Note that only bits 0, 1, 2, and 4 of the 71 can be specified -- not bit 3 (8).
+			//The mode is assigned, not merged: the property starts as FrontClippingZ, so merging
+			//could never clear a flag the file does not have.
+			view.ViewMode = ViewModeType.Off;
+
 			//0 : 71's bit 0 (1)
 			if (this._objectReader.ReadBit())
 				view.ViewMode |= ViewModeType.PerspectiveView;
@@ -6707,7 +6711,7 @@ namespace ACadSharp.IO.DWG
 			if (this._objectReader.ReadBit())
 				view.ViewMode |= ViewModeType.BackClipping;
 			//3 : OPPOSITE of 71's bit 4 (16)
-			if (this._objectReader.ReadBit())
+			if (!this._objectReader.ReadBit())
 				view.ViewMode |= ViewModeType.FrontClippingZ;
 
 			//R2000+:
@@ -7171,6 +7175,10 @@ namespace ACadSharp.IO.DWG
 
 			//View mode X 71 4 bits: 0123
 			//Note that only bits 0, 1, 2, and 4 are given here; see UCSFOLLOW below for bit 3(8) of the 71.
+			//The mode is assigned, not merged: the property starts as FrontClippingZ, so merging
+			//could never clear a flag the file does not have.
+			vport.ViewMode = ViewModeType.Off;
+
 			//0 : 71's bit 0 (1)
 			if (this._objectReader.ReadBit())
 				vport.ViewMode |= ViewModeType.PerspectiveView;
@@ -7181,7 +7189,9 @@ namespace ACadSharp.IO.DWG
 			if (this._objectReader.ReadBit())
 				vport.ViewMode |= ViewModeType.BackClipping;
 			//3 : OPPOSITE of 71's bit 4 (16)
-			if (this._objectReader.ReadBit())
+			//The bit is stored inverted, and reading it straight gave every viewport a view mode of
+			//16 where AutoCAD's own DXF for the same drawing says 0.
+			if (!this._objectReader.ReadBit())
 				vport.ViewMode |= ViewModeType.FrontClippingZ;
 
 			//R2000+:
