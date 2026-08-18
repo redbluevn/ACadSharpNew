@@ -379,9 +379,62 @@ namespace ACadSharp.IO.DXF
 
 			this._writer.Write(40, vport.ViewHeight);
 			this._writer.Write(41, vport.AspectRatio);
+			this._writer.Write(42, vport.LensLength, map);
+			this._writer.Write(43, vport.FrontClippingPlane, map);
+			this._writer.Write(44, vport.BackClippingPlane, map);
 
+			this._writer.Write(50, vport.SnapRotation, map);
+			this._writer.Write(51, vport.TwistAngle, map);
+
+			this._writer.Write(71, (short)vport.ViewMode);
+			this._writer.Write(72, vport.CircleZoomPercent);
+
+			//Fast zoom, obsolete since R13 and written as 1 by AutoCAD in every version, as the DWG
+			//writer already does.
+			this._writer.Write(73, (short)1);
+
+			this._writer.Write(74, (short)vport.UcsIconDisplay);
 			this._writer.Write(75, vport.SnapOn ? (short)1 : (short)0);
 			this._writer.Write(76, vport.ShowGrid ? (short)1 : (short)0);
+			this._writer.Write(77, vport.IsometricSnap ? (short)1 : (short)0);
+			this._writer.Write(78, vport.SnapIsoPair);
+
+			//R12 ends the record here; everything below it appears from R2000 on.
+			if (this.Version < ACadVersion.AC1015)
+			{
+				return;
+			}
+
+			this._writer.Write(281, (short)vport.RenderMode);
+
+			//UCS per viewport, written as 1 by AutoCAD and by our own DWG writer.
+			this._writer.Write(65, (short)1);
+
+			this._writer.Write(110, vport.Origin, map);
+			this._writer.Write(111, vport.XAxis, map);
+			this._writer.Write(112, vport.YAxis, map);
+
+			this._writer.Write(79, (short)vport.OrthographicType);
+			this._writer.Write(146, vport.Elevation);
+
+			if (this.Version < ACadVersion.AC1021)
+			{
+				return;
+			}
+
+			this._writer.WriteHandle(348, vport.VisualStyle);
+
+			this._writer.Write(60, (short)vport.GridFlags);
+			this._writer.Write(61, vport.MinorGridLinesPerMajorGridLine);
+
+			this._writer.Write(292, vport.UseDefaultLighting ? (short)1 : (short)0);
+			this._writer.Write(282, (short)vport.DefaultLighting);
+
+			this._writer.Write(141, vport.Brightness);
+			this._writer.Write(142, vport.Contrast);
+
+			this._writer.Write(63, vport.AmbientColor.GetApproxIndex());
+			this._writer.WriteTrueColor(421, vport.AmbientColor);
 		}
 	}
 }
