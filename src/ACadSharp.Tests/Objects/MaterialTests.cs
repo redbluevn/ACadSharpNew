@@ -1,6 +1,7 @@
 using ACadSharp.Entities;
 using ACadSharp.IO;
 using ACadSharp.Objects;
+using ACadSharp.Tables;
 using CSMath;
 using System.IO;
 using System.Linq;
@@ -81,6 +82,51 @@ public class MaterialTests
 		Mesh rtAnchor = rt.Entities.OfType<Mesh>().Single();
 		Assert.NotNull(rtAnchor.Material);
 		Assert.Equal("RoundTripMaterial", rtAnchor.Material.Name);
+	}
+
+	[Fact]
+	public void NewDocumentWiresTheDefaultMaterials()
+	{
+		CadDocument doc = new CadDocument();
+
+		//AutoCAD points every layer at "Global" and CMATERIAL at "ByLayer".
+		Assert.True(doc.Materials.TryGet(Material.GlobalName, out Material global));
+		Assert.True(doc.Materials.TryGet(Material.ByLayerName, out Material byLayer));
+		Assert.True(doc.Materials.TryGet(Material.ByBlockName, out Material _));
+
+		Assert.Same(global, doc.Layers[Layer.DefaultName].Material);
+		Assert.Same(byLayer, doc.Header.CurrentMaterial);
+	}
+
+	[Theory]
+	[InlineData(ACadVersion.AC1024)]
+	[InlineData(ACadVersion.AC1032)]
+	public void DwgRoundTripKeepsTheLayerAndHeaderMaterial(ACadVersion version)
+	{
+		CadDocument doc = new CadDocument(version);
+
+		MemoryStream ms = new MemoryStream();
+		DwgWriter.Write(ms, doc);
+		using MemoryStream readStream = new MemoryStream(ms.ToArray());
+		CadDocument rt = DwgReader.Read(readStream);
+
+		Layer layer = rt.Layers[Layer.DefaultName];
+		Assert.NotNull(layer.Material);
+		Assert.Equal(Material.GlobalName, layer.Material.Name);
+
+		Assert.NotNull(rt.Header.CurrentMaterial);
+		Assert.Equal(Material.ByLayerName, rt.Header.CurrentMaterial.Name);
+	}
+
+	[Fact]
+	public void ReadsTheLayerMaterialOfAFileWrittenByAutoCad()
+	{
+		string path = Path.Combine(TestVariables.SamplesFolder, "sample_base", "empty.dwg");
+		CadDocument doc = DwgReader.Read(path);
+
+		Layer layer = doc.Layers[Layer.DefaultName];
+		Assert.NotNull(layer.Material);
+		Assert.Equal(Material.GlobalName, layer.Material.Name);
 	}
 
 	[Fact]

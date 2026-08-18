@@ -1238,7 +1238,7 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		if (this.R2007Plus)
 		{
 			//H 347 Material
-			this._writer.HandleReference(DwgReferenceType.HardPointer, 0);
+			this._writer.HandleReference(DwgReferenceType.HardPointer, layer.Material);
 		}
 
 		//Common:

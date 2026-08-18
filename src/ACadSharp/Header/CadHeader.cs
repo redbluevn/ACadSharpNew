@@ -257,6 +257,16 @@ namespace ACadSharp.Header
 		}
 
 		/// <summary>
+		/// Material used by new objects.
+		/// </summary>
+		/// <remarks>
+		/// System variable CMATERIAL, DXF group code 347. AutoCAD points it at the <c>ByLayer</c>
+		/// material of the ACAD_MATERIAL dictionary. It is stored as a handle, so it is only read
+		/// and written for DWG; the DXF reader and writer ignore it.
+		/// </remarks>
+		public Material CurrentMaterial { get; set; }
+
+		/// <summary>
 		/// Gets the current line type associated with the document or the default line type if no document is set.
 		/// </summary>
 		public LineType CurrentLineType
