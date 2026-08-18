@@ -1,10 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using ACadSharp.Attributes;
+﻿using ACadSharp.Attributes;
 using ACadSharp.Classes;
 using ACadSharp.Objects;
 using ACadSharp.Tables;
 using CSMath;
+using System.Collections.Generic;
+using System;
 
 namespace ACadSharp.Entities;
 
@@ -640,21 +640,6 @@ public partial class MultiLeader : Entity, IDxfClassDefined
 		return BoundingBox.Null;
 	}
 
-	/// <inheritdoc/>
-	public DxfClass GetDxfClass()
-	{
-		return new DxfClass
-		{
-			CppClassName = DxfSubclassMarker.MultiLeader,
-			DwgVersion = ACadVersion.MC0_0,
-			DxfName = DxfFileToken.EntityMultiLeader,
-			ItemClassId = 499,
-			MaintenanceVersion = 0,
-			ProxyFlags = ProxyFlags.EraseAllowed | ProxyFlags.DisablesProxyWarningDialog,
-			WasZombie = false,
-		};
-	}
-
 	internal override void AssignDocument(CadDocument doc)
 	{
 		base.AssignDocument(doc);
@@ -667,18 +652,10 @@ public partial class MultiLeader : Entity, IDxfClassDefined
 
 		this.ContextData.AssignDocument(doc);
 
-		doc.LineTypes.OnRemove += this.tableOnRemove;
-		doc.TextStyles.OnRemove += this.tableOnRemove;
-		doc.MLeaderStyles.OnRemove += this.tableOnRemove;
-		doc.BlockRecords.OnRemove += this.tableOnRemove;
 	}
 
 	internal override void UnassignDocument()
 	{
-		this.Document.LineTypes.OnRemove -= this.tableOnRemove;
-		this.Document.TextStyles.OnRemove -= this.tableOnRemove;
-		this.Document.MLeaderStyles.OnRemove -= this.tableOnRemove;
-		this.Document.BlockRecords.OnRemove -= this.tableOnRemove;
 
 		this.ContextData.UnassignDocument();
 
@@ -691,9 +668,9 @@ public partial class MultiLeader : Entity, IDxfClassDefined
 		this._blockContent = (BlockRecord)this._blockContent?.Clone();
 	}
 
-	protected override void tableOnRemove(object sender, CollectionChangedEventArgs e)
+	internal override void OnTableEntryRemoved(object sender, CollectionChangedEventArgs e)
 	{
-		base.tableOnRemove(sender, e);
+		base.OnTableEntryRemoved(sender, e);
 
 		if (e.Item.Equals(this._style))
 		{
@@ -715,5 +692,20 @@ public partial class MultiLeader : Entity, IDxfClassDefined
 		{
 			this._blockContent = null;
 		}
+	}
+
+	/// <inheritdoc/>
+	public DxfClass GetDxfClass()
+	{
+		return new DxfClass
+		{
+			CppClassName = DxfSubclassMarker.MultiLeader,
+			DwgVersion = ACadVersion.MC0_0,
+			DxfName = DxfFileToken.EntityMultiLeader,
+			ItemClassId = 499,
+			MaintenanceVersion = 0,
+			ProxyFlags = ProxyFlags.EraseAllowed | ProxyFlags.DisablesProxyWarningDialog,
+			WasZombie = false,
+		};
 	}
 }

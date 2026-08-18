@@ -546,14 +546,10 @@ public abstract class Dimension : Entity, IOrientable
 
 		this._block = CadObject.updateCollection(this.Block, this.Document.BlockRecords);
 
-		doc.DimensionStyles.OnRemove += this.tableOnRemove;
-		doc.BlockRecords.OnRemove += this.tableOnRemove;
 	}
 
 	internal override void UnassignDocument()
 	{
-		this.Document.DimensionStyles.OnRemove -= this.tableOnRemove;
-		this.Document.BlockRecords.OnRemove -= this.tableOnRemove;
 
 		base.UnassignDocument();
 
@@ -797,9 +793,9 @@ public abstract class Dimension : Entity, IOrientable
 		};
 	}
 
-	protected override void tableOnRemove(object sender, CollectionChangedEventArgs e)
+	internal override void OnTableEntryRemoved(object sender, CollectionChangedEventArgs e)
 	{
-		base.tableOnRemove(sender, e);
+		base.OnTableEntryRemoved(sender, e);
 
 		if (e.Item.Equals(this.Style))
 		{

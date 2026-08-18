@@ -384,21 +384,19 @@ public partial class MText : Entity, IText
 
 		this._style = CadObject.updateCollection(this.Style, doc.TextStyles);
 
-		doc.DimensionStyles.OnRemove += this.tableOnRemove;
 	}
 
 	internal override void UnassignDocument()
 	{
-		this.Document.DimensionStyles.OnRemove -= this.tableOnRemove;
 
 		base.UnassignDocument();
 
 		this.Style = (TextStyle)this.Style.Clone();
 	}
 
-	protected override void tableOnRemove(object sender, CollectionChangedEventArgs e)
+	internal override void OnTableEntryRemoved(object sender, CollectionChangedEventArgs e)
 	{
-		base.tableOnRemove(sender, e);
+		base.OnTableEntryRemoved(sender, e);
 
 		if (e.Item.Equals(this.Style))
 		{
