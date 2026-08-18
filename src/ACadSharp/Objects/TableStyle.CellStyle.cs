@@ -118,6 +118,9 @@ public partial class TableStyle
 		{
 			style.Type = CellStyleType.Table;
 			style.Alignment = alignment;
+			//The layout used before R2007 stores the same value in the CellAlignment field, so both
+			//have to carry it or the older file goes out with alignment 0 and AutoCAD repairs it.
+			style.CellAlignment = (TableStyle.CellAlignmentType)alignment;
 			style.TextHeight = textHeight;
 			style.Scale = 1.0;
 			style.ValueDataType = 512;
