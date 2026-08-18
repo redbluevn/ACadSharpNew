@@ -37,7 +37,12 @@ namespace ACadSharp.IO.DXF
 
 			this._writer.Write(DxfCode.Subclass, DxfSubclassMarker.Table);
 
-			this._writer.Write(70, table.Count);
+			//Group code 70 of a table header is a 16 bit value, and a real drawing can hold more
+			//entries than that: an interior drawing of 17 MB in the corpus has 40843 block records.
+			//Converting that with a checked conversion threw and no DXF came out at all. AutoCAD
+			//lets the count wrap round instead - it writes -24493 for its 41043 block records - and
+			//the number is advisory anyway, the entries that follow are what counts.
+			this._writer.Write(70, unchecked((short)table.Count));
 
 			if (!string.IsNullOrEmpty(subclass))
 			{
