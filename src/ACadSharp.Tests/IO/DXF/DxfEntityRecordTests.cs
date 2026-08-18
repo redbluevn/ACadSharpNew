@@ -42,6 +42,28 @@ namespace ACadSharp.Tests.IO.DXF
 			Assert.Contains(record, p => p.Item1 == 47);
 		}
 
+		[Fact]
+		public void LeaderWritesTheAnnotationHandle()
+		{
+			CadDocument doc = new CadDocument();
+			MText annotation = new MText { Value = "annotation" };
+			doc.Entities.Add(annotation);
+
+			Leader leader = new Leader();
+			leader.Vertices.Add(new XYZ(0, 0, 0));
+			leader.Vertices.Add(new XYZ(10, 10, 0));
+			//The setter is internal: only the readers assign the annotation today.
+			typeof(Leader).GetProperty(nameof(Leader.AssociatedAnnotation))
+				.GetSetMethod(true)
+				.Invoke(leader, new object[] { annotation });
+			doc.Entities.Add(leader);
+
+			List<(int, string)> record = this.recordOf(doc, "LEADER");
+
+			(int, string) pair = Assert.Single(record, p => p.Item1 == 340);
+			Assert.Equal(annotation.Handle.ToString("X"), pair.Item2.Trim());
+		}
+
 		private static Hatch createHatch()
 		{
 			Hatch hatch = new Hatch();
