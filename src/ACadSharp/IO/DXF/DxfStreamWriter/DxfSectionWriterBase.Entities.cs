@@ -709,7 +709,10 @@ internal abstract partial class DxfSectionWriterBase
 		}
 
 		//this._writer.Write(77, leader,map);
-		//this._writer.Write(340, leader.Annotation,map);
+
+		//AutoCAD audits a LEADER whose creation type says "mtext" but that carries no annotation
+		//handle: "AcDbLeader annotation id Bad mtext id". Write the real reference.
+		this._writer.WriteHandle(340, leader.AssociatedAnnotation, map);
 
 		this._writer.Write(210, leader.Normal, map);
 
