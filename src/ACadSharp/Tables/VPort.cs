@@ -148,7 +148,9 @@ namespace ACadSharp.Tables
 		/// View mode(see VIEWMODE system variable)
 		/// </summary>
 		[DxfCodeValue(71)]
-		public ViewModeType ViewMode { get; set; } = ViewModeType.FrontClippingZ;
+		//AutoCAD writes 0 for the active viewport of a new drawing, and for the *Active of every
+		//sample it saved; FrontClippingZ as a default put a flag in the record that no file has.
+		public ViewModeType ViewMode { get; set; } = ViewModeType.Off;
 
 		/// <summary>
 		/// UCSICON setting
