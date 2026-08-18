@@ -3031,13 +3031,13 @@ internal class DxfObjectsSectionReader : DxfSectionReaderBase
 				cellStyle.IsFillColorOn = this._reader.ValueAsBool;
 				return true;
 			case 90:
-				cellStyle.Type = (TableStyle.CellStyleType)this._reader.ValueAsShort;
+				cellStyle.ValueDataType = this._reader.ValueAsInt;
 				return true;
 			case 91:
-				cellStyle.StyleClass = (TableStyle.CellStyleClass)this._reader.ValueAsShort;
+				cellStyle.ValueUnitType = this._reader.ValueAsInt;
 				return true;
 			case 1:
-				//Undocumented
+				cellStyle.ValueFormatString = this._reader.ValueAsString;
 				return true;
 			case 274:
 				cellStyle.TopBorder.LineWeight = (LineWeightType)this._reader.ValueAsInt;
