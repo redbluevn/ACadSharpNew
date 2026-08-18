@@ -1733,6 +1733,12 @@ internal abstract class DxfSectionReaderBase
 			case 331:
 				tmp.FrozenLayerHandles.Add(this._reader.ValueAsHandle);
 				return true;
+			case 340:
+				//The entity that clips the viewport. Without this the handle fell through to the
+				//generic path, which cannot put a handle into an entity reference, so a clipped
+				//viewport read from DXF lost its boundary - the DWG reader has always kept it.
+				tmp.BoundaryHandle = this._reader.ValueAsHandle;
+				return true;
 			case 348:
 				tmp.VisualStyleHandle = this._reader.ValueAsHandle;
 				return true;
