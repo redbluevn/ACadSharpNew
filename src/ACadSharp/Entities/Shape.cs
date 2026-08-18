@@ -76,6 +76,19 @@ public class Shape : Entity, IOrientable
 	}
 
 	/// <summary>
+	/// Name of the shape inside the shape file, DXF group code 2.
+	/// </summary>
+	/// <remarks>
+	/// DWG stores the shape by its index in the file (<see cref="ShapeIndex"/>) and not by name, so
+	/// this is only known for an entity that was read from DXF. Without it the entity cannot be
+	/// written to DXF: AutoCAD looks the name up in the shape file and rejects the drawing when it
+	/// is not there.
+	/// The property carries no DXF attribute on purpose: group code 2 is already mapped to
+	/// <see cref="ShapeStyle"/>, and the reader and the writer handle the code themselves.
+	/// </remarks>
+	public string ShapeName { get; set; }
+
+	/// <summary>
 	/// Size.
 	/// </summary>
 	[DxfCodeValue(40)]
