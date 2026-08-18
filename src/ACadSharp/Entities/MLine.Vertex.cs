@@ -50,7 +50,9 @@ namespace ACadSharp.Entities
 			{
 				Vertex clone = (Vertex)this.MemberwiseClone();
 
-				clone.Segments.Clear();
+				//A new list: MemberwiseClone shares the one of the source, so clearing it emptied
+				//the source too and left nothing to copy.
+				clone.Segments = new List<Segment>();
 				foreach (var item in this.Segments)
 				{
 					var seg = new Segment();

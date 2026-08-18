@@ -111,7 +111,10 @@ public partial class MLine : Entity, IOrientable
 
 		clone.Style = (MLineStyle)(this.Style?.Clone());
 
-		clone.Vertices.Clear();
+		//MemberwiseClone copies the reference, so the clone and the source share one list: clearing
+		//it here used to empty the source as well, and the loop below then had nothing left to copy.
+		//Both the source and the clone ended up with no vertices at all.
+		clone.Vertices = new List<Vertex>();
 		foreach (var item in this.Vertices)
 		{
 			clone.Vertices.Add(item.Clone());
