@@ -35,7 +35,12 @@ namespace ACadSharp.IO.DXF
 			this._writer.Write(DxfCode.Subclass, DxfSubclassMarker.BlockBegin);
 
 			this._writer.Write(2, block.Name, map);
-			this._writer.Write(70, (short)block.Flags, map);
+
+			//A block is anonymous only when its name is one AutoCAD generated, which always starts
+			//with an asterisk. A drawing can carry the flag on a block with a real name - xref bound
+			//blocks of one production drawing do - and AutoCAD, asked to save the same drawing,
+			//leaves the flag out for those and audits "Invalid anonymous block" when it is there.
+			this._writer.Write(70, (short)CadUtils.EffectiveBlockFlags(block.Flags, block.Name), map);
 
 			if (this.Version >= ACadVersion.AC1015 && block.IsUnloaded)
 			{

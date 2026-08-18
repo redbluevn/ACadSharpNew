@@ -8,6 +8,28 @@ namespace ACadSharp;
 
 internal static class CadUtils
 {
+	/// <summary>
+	/// The block flags as a file should carry them: a block is anonymous only when its name is one
+	/// AutoCAD generated, and those always start with an asterisk.
+	/// </summary>
+	/// <remarks>
+	/// A drawing can hold a block that carries the anonymous flag and a real name - the xref bound
+	/// blocks of one production drawing do, with names such as <c>Xr_plan$0$marks</c>. AutoCAD,
+	/// asked to save that drawing, writes those blocks without the flag, and refuses to open a file
+	/// that keeps it: the DWG writes only the first two characters of an anonymous name, so the
+	/// block ends up called <c>Xr</c> and the audit says <c>Invalid anonymous block</c>.
+	/// </remarks>
+	public static ACadSharp.Blocks.BlockTypeFlags EffectiveBlockFlags(ACadSharp.Blocks.BlockTypeFlags flags, string name)
+	{
+		if (flags.HasFlag(ACadSharp.Blocks.BlockTypeFlags.Anonymous)
+			&& (string.IsNullOrEmpty(name) || !name.StartsWith("*")))
+		{
+			return flags & ~ACadSharp.Blocks.BlockTypeFlags.Anonymous;
+		}
+
+		return flags;
+	}
+
 
 		/// <summary>
 		/// Escapes the characters a code page cannot hold, the way AutoCAD does when it saves a
