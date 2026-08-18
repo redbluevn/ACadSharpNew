@@ -26,6 +26,29 @@ public partial class TableStyle : NonGraphicalObject, IDxfClassDefined
 	public List<CellStyle> CellStyles { get; } = new();
 
 	/// <summary>
+	/// Gets every cell style of this table style: the table, title, header and data styles plus
+	/// the entries of <see cref="CellStyles"/>, without repeating the ones that are in both places.
+	/// </summary>
+	public IEnumerable<CellStyle> GetCellStyles()
+	{
+		foreach (CellStyle cellStyle in new[] { this.TableCellStyle, this.TitleCellStyle, this.HeaderCellStyle, this.DataCellStyle })
+		{
+			if (cellStyle != null && !this.CellStyles.Contains(cellStyle))
+			{
+				yield return cellStyle;
+			}
+		}
+
+		foreach (CellStyle cellStyle in this.CellStyles)
+		{
+			if (cellStyle != null)
+			{
+				yield return cellStyle;
+			}
+		}
+	}
+
+	/// <summary>
 	/// Gets the style settings applied to data cells within the table entity.
 	/// </summary>
 	public CellStyle DataCellStyle { get; set; } = CellStyle.DefaultDataCellStyle;

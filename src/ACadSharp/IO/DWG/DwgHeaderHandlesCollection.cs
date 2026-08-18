@@ -87,6 +87,11 @@ namespace ACadSharp.IO.DWG
 				header.CurrentLineTypeName = entry.Name;
 			}
 
+			if (builder.TryGetCadObject(this.CMATERIAL, out Objects.Material material))
+			{
+				header.CurrentMaterial = material;
+			}
+
 			if (builder.TryGetCadObject(this.CMLSTYLE, out entry))
 			{
 				header.CurrentMLineStyleName = entry.Name;

@@ -32,11 +32,11 @@ namespace ACadSharp.IO.Templates
 
 			if (builder.TryGetCadObject(this.MaterialHandle, out Material material))
 			{
-
+				this.CadObject.Material = material;
 			}
-			else
+			else if (this.MaterialHandle > 0)
 			{
-				// builder.Notify($"Linetype with handle {this.LineTypeHandle} could not be found for layer {this.CadObject.Name}", NotificationType.Warning);
+				builder.Notify($"Material with handle {this.MaterialHandle} could not be found for layer {this.CadObject.Name}", NotificationType.Warning);
 			}
 
 			if (this.getTableReference(builder, LineTypeHandle, LineTypeName, out LineType lineType))
