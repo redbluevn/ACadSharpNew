@@ -151,8 +151,21 @@ internal abstract partial class DxfSectionWriterBase
 			case MechanicalEntity:
 			case Wall:
 				return false;
-			case Shape:
-				return this.Configuration.WriteShapes;
+			case Shape shapeEntity:
+				if (!this.Configuration.WriteShapes)
+				{
+					return false;
+				}
+
+				if (string.IsNullOrEmpty(shapeEntity.ShapeName))
+				{
+					//DXF identifies the shape by name and the name is not stored in DWG, so an entity
+					//that comes from a DWG cannot be written to DXF.
+					this.notify($"Shape {shapeEntity.Handle} has no shape name, it cannot be written to DXF", NotificationType.Warning);
+					return false;
+				}
+
+				return true;
 			case ProxyEntity:
 			case TableEntity:
 			case Solid3D:
@@ -1208,7 +1221,9 @@ internal abstract partial class DxfSectionWriterBase
 
 		this._writer.Write(40, shape.Size, map);
 
-		this._writer.WriteName(2, shape.ShapeStyle, map);
+		//Group code 2 is the name of the shape inside the shape file; writing the name of the style
+		//instead makes AutoCAD reject the drawing, since that name is not in the file.
+		this._writer.Write(2, shape.ShapeName);
 
 		this._writer.Write(50, shape.Rotation, map);
 
