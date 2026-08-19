@@ -18,21 +18,12 @@ namespace ACadSharp.Tests.IO.DXF
 	/// </summary>
 	public class DxfEntityRecordTests
 	{
+		//Group 47 (pixel size) belongs to a derived boundary and only to one, whatever its value:
+		//AutoCAD writes 47 = 0.0 for a derived path and nothing for a non-derived one, and discards
+		//a drawing that breaks the rule either way (hatch C860 of a client drawing, and three
+		//hatches of samples/sample_AC1032.dwg, respectively).
 		[Fact]
-		public void HatchWithoutPixelSizeDoesNotWriteCode47()
-		{
-			CadDocument doc = new CadDocument();
-			Hatch hatch = createHatch();
-			hatch.PixelSize = 0;
-			doc.Entities.Add(hatch);
-
-			List<(int, string)> record = this.recordOf(doc, "HATCH");
-
-			Assert.DoesNotContain(record, p => p.Item1 == 47);
-		}
-
-		[Fact]
-		public void HatchWithPixelSizeWritesCode47()
+		public void HatchWithoutDerivedPathDoesNotWriteCode47()
 		{
 			CadDocument doc = new CadDocument();
 			Hatch hatch = createHatch();
@@ -41,7 +32,37 @@ namespace ACadSharp.Tests.IO.DXF
 
 			List<(int, string)> record = this.recordOf(doc, "HATCH");
 
-			Assert.Contains(record, p => p.Item1 == 47);
+			Assert.DoesNotContain(record, p => p.Item1 == 47);
+		}
+
+		[Fact]
+		public void HatchWithDerivedPathWritesCode47EvenWhenZero()
+		{
+			CadDocument doc = new CadDocument();
+			Hatch hatch = createHatch();
+			hatch.Paths[0].Flags |= BoundaryPathFlags.Derived;
+			hatch.PixelSize = 0;
+			doc.Entities.Add(hatch);
+
+			List<(int, string)> record = this.recordOf(doc, "HATCH");
+
+			(int, string) pixel = Assert.Single(record, p => p.Item1 == 47);
+			Assert.Equal(0.0, double.Parse(pixel.Item2, System.Globalization.CultureInfo.InvariantCulture));
+		}
+
+		[Fact]
+		public void HatchWithDerivedPathWritesItsPixelSize()
+		{
+			CadDocument doc = new CadDocument();
+			Hatch hatch = createHatch();
+			hatch.Paths[0].Flags |= BoundaryPathFlags.Derived;
+			hatch.PixelSize = 0.05;
+			doc.Entities.Add(hatch);
+
+			List<(int, string)> record = this.recordOf(doc, "HATCH");
+
+			(int, string) pixel = Assert.Single(record, p => p.Item1 == 47);
+			Assert.Equal(0.05, double.Parse(pixel.Item2, System.Globalization.CultureInfo.InvariantCulture));
 		}
 
 		[Fact]

@@ -524,10 +524,13 @@ internal abstract partial class DxfSectionWriterBase
 
 		this.writeHatchPattern(hatch, hatch.Pattern);
 
-		//Group 47 is the pixel size used for the flood/associative hatch computation. AutoCAD only
-		//writes it when it actually has a value: in every sample DXF it wrote, no HATCH carries a
-		//47 of 0. Writing 47 = 0 makes AutoCAD reject the whole file, so only emit a real value.
-		if (hatch.PixelSize != 0)
+		//Group 47, the pixel size, goes with a derived boundary and only with one - the same rule
+		//the DWG stream follows (the bit double is present exactly when a path has the Derived flag).
+		//AutoCAD writes it for every hatch with a derived path, 0.0 included, and for no other:
+		//across its own DXF of three client drawings and the sample set (2669 hatches) there is no
+		//exception either way. It reads by that rule too: a 47 on a hatch without a derived path
+		//and a missing 47 on a hatch with one both make it discard the whole drawing.
+		if (hatch.Paths.Any(p => p.Flags.HasFlag(BoundaryPathFlags.Derived)))
 		{
 			this._writer.Write(47, hatch.PixelSize, map);
 		}
