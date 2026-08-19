@@ -56,6 +56,17 @@ namespace ACadSharp.IO.DWG
 
 		private readonly MemoryStream _memoryStream;
 
+		//One reader per role, kept for the whole section instead of built per object. Every object
+		//used to get three fresh stream handlers over three fresh clones of the section, which for a
+		//drawing with 909016 objects is millions of short lived allocations. Each role keeps its own
+		//stream, so the three can sit at three different offsets at once; moving to the next object
+		//is a reposition.
+		private IDwgStreamReader _reusableObjectReader;
+
+		private IDwgStreamReader _reusableHandlesReader;
+
+		private IDwgStreamReader _reusableTextReader;
+
 		private readonly Dictionary<ulong, ObjectType> _readedObjects = new Dictionary<ulong, ObjectType>();
 
 		private readonly IDwgStreamReader _reader;
@@ -192,6 +203,19 @@ namespace ACadSharp.IO.DWG
 			}
 		}
 
+		/// <summary>
+		/// The reader for one of the three roles, created once and repositioned afterwards.
+		/// </summary>
+		private IDwgStreamReader roleReader(ref IDwgStreamReader cached)
+		{
+			if (cached == null)
+			{
+				cached = DwgStreamReaderBase.GetStreamHandler(this._version, HugeMemoryStream.Clone(this._memoryStream), this._reader.Encoding);
+			}
+
+			return cached;
+		}
+
 		private ObjectType getEntityType(long offset)
 		{
 			ObjectType type = ObjectType.INVALID;
@@ -220,7 +244,7 @@ namespace ACadSharp.IO.DWG
 				ulong handleSectionOffset = (ulong)this._crcReader.PositionInBits() + sizeInBits - handleSize;
 
 				//Create a handler section reader
-				this._objectReader = DwgStreamReaderBase.GetStreamHandler(this._version, HugeMemoryStream.Clone(this._memoryStream), this._reader.Encoding);
+				this._objectReader = this.roleReader(ref this._reusableObjectReader);
 				this._objectReader.SetPositionInBits(this._crcReader.PositionInBits());
 
 				//set the initial position and get the object type
@@ -228,11 +252,11 @@ namespace ACadSharp.IO.DWG
 				type = this._objectReader.ReadObjectType();
 
 				//Create a handler section reader
-				this._handlesReader = DwgStreamReaderBase.GetStreamHandler(this._version, HugeMemoryStream.Clone(this._memoryStream), this._reader.Encoding);
+				this._handlesReader = this.roleReader(ref this._reusableHandlesReader);
 				this._handlesReader.SetPositionInBits((long)handleSectionOffset);
 
 				//Create a text section reader
-				this._textReader = DwgStreamReaderBase.GetStreamHandler(this._version, HugeMemoryStream.Clone(this._memoryStream), this._reader.Encoding);
+				this._textReader = this.roleReader(ref this._reusableTextReader);
 				this._textReader.SetPositionByFlag((long)handleSectionOffset - 1);
 
 				this._mergedReaders = new DwgMergedReader(this._objectReader, this._textReader, this._handlesReader);
@@ -240,10 +264,10 @@ namespace ACadSharp.IO.DWG
 			else
 			{
 				//Create a handler section reader
-				this._objectReader = DwgStreamReaderBase.GetStreamHandler(this._version, HugeMemoryStream.Clone(this._memoryStream), this._reader.Encoding);
+				this._objectReader = this.roleReader(ref this._reusableObjectReader);
 				this._objectReader.SetPositionInBits(this._crcReader.PositionInBits());
 
-				this._handlesReader = DwgStreamReaderBase.GetStreamHandler(this._version, HugeMemoryStream.Clone(this._memoryStream), this._reader.Encoding);
+				this._handlesReader = this.roleReader(ref this._reusableHandlesReader);
 				this._textReader = this._objectReader;
 
 				//set the initial position and get the object type
@@ -736,7 +760,7 @@ namespace ACadSharp.IO.DWG
 
 			if (this._version == ACadVersion.AC1021)
 			{
-				this._textReader = DwgStreamReaderBase.GetStreamHandler(this._version, HugeMemoryStream.Clone(this._memoryStream), this._reader.Encoding);
+				this._textReader = this.roleReader(ref this._reusableTextReader);
 				//"endbit" of the pre-handles section.
 				this._textReader.SetPositionByFlag(size + this._objectInitialPos - 1);
 			}
