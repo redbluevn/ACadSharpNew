@@ -1677,7 +1677,14 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		//  293 Enable Annotation Scale/Is annotative
 		this._writer.WriteBit(multiLeader.EnableAnnotationScale);
 
-		//	R2007pre not supported
+		//	-R2007: the arrow head list. The reader consumes it (a count, then a bit and a handle
+		//	each) and the model has nowhere to keep it, so the count is written as zero: that keeps
+		//	the bit stream aligned, which is what makes the object readable at all before R2007.
+		if (this.R2007Pre)
+		{
+			//	BL number of arrow heads
+			this._writer.WriteBitLong(0);
+		}
 
 		//	BL Number of Block Labels
 		int blockLabelCount = multiLeader.BlockAttributes.Count;
@@ -1830,11 +1837,18 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			//	B	Unknown
 			this._writer.WriteBit(false);
 		}
-		else if (annotContext.HasContentsBlock)
+		else
 		{
+			//B	296	Has contents block. The reader always consumes this bit when there is no text
+			//content (`else if (HasContentsBlock = ReadBit())`), so it has to be written even when
+			//there is no block either - otherwise everything after it is off by one bit and the
+			//object cannot be read back at any version.
 			this._writer.WriteBit(annotContext.HasContentsBlock);
+		}
 
-			//B	296	Has contents block
+		if (!annotContext.HasTextContents && annotContext.HasContentsBlock)
+		{
+			//IF Has contents block
 			//IF Has contents block
 			//	H	341	AcDbBlockTableRecord handle (soft pointer)
 			this._writer.HandleReference(DwgReferenceType.SoftPointer, annotContext.BlockContent);
