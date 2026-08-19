@@ -873,7 +873,11 @@ public class CadDocument : IHandledCadObject
 	/// </summary>
 	private void notifyTableEntryRemoved(object sender, CollectionChangedEventArgs e)
 	{
-		if (e.Item is not TableEntry && e.Item is not ImageDefinition)
+		//Only the kinds of object another object can hold a reference to are worth a walk: the table
+		//entries, and the non graphical objects such as Material and ImageDefinition. A dictionary is
+		//a container rather than such a reference, and removing one entity of many must not turn into
+		//a walk of the whole document.
+		if (e.Item is CadDictionary || (e.Item is not TableEntry && e.Item is not NonGraphicalObject))
 		{
 			return;
 		}
