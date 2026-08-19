@@ -148,9 +148,18 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			case Shape:
 				return this.WriteShapes;
 			case TableEntity when !this.R2010Plus:
-			//MULTILEADER was introduced with AutoCAD 2008 (AC1021) and the writer only implements
-			//the R2010 layout; writing one into an older file leaves AutoCAD unable to open it.
 			case MultiLeader when !this.R2010Plus:
+				//Only the R2010 layout of these two is implemented, and AutoCAD refuses a whole
+				//drawing that carries it at an older version - measured on both AC1015 and AC1018,
+				//which is why they are dropped rather than written. It is a limit of this writer,
+				//not of the format: AutoCAD's own AC1015 and AC1018 files hold both, and reading
+				//them back gives the same values as its AC1032 file for 16 of the 17 objects in
+				//the sample drawing. Say which limit it is, so the caller knows a newer version
+				//keeps the object.
+				this.notify(
+					$"{entity.GetType().Name} {entity.Handle} is not written to a {this._version} file: only the {ACadVersion.AC1024} layout of it is implemented, and AutoCAD refuses a file that carries that layout at this version. {ACadVersion.AC1024} is the oldest version that keeps it.",
+					NotificationType.NotImplemented);
+				return false;
 			case Wall:
 			case MechanicalEntity:
 			case ProxyEntity:
