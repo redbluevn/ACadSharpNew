@@ -91,6 +91,22 @@ public abstract class CadObject : IHandledCadObject
 		}
 	}
 
+	/// <summary>
+	/// Called by the document when an entry is removed from one of its tables, so an object that
+	/// references that entry can drop it.
+	/// </summary>
+	/// <remarks>
+	/// Every object used to subscribe to the tables it cared about, one delegate per object per
+	/// table: a 17 MB production drawing built 2013332 of them, 126 MB, a quarter of the heap the
+	/// document needed. The document calls this once per removal instead. Removals are rare and
+	/// reading is not, so walking the objects is the cheaper side of the trade. The handlers
+	/// compare the removed entry by reference, so hearing about a table this object does not use
+	/// costs one failed comparison.
+	/// </remarks>
+	internal virtual void OnTableEntryRemoved(object sender, CollectionChangedEventArgs e)
+	{
+	}
+
 	//Created with the first reactor. Hardly any object of a real drawing has one, and giving each
 	//of them an empty list cost 28 MB of the 548 MB a 17 MB production drawing needed.
 	private List<CadObject> _reactors;

@@ -816,6 +816,35 @@ public class CadDocument : IHandledCadObject
 		{
 			this.RemoveCadObject(e.Item);
 		}
+
+		this.notifyTableEntryRemoved(sender, e);
+	}
+
+	/// <summary>
+	/// Tells the objects of the document that an entry was removed, so the ones that reference it
+	/// can drop it. See <see cref="CadObject.OnTableEntryRemoved"/> for why this is done here
+	/// rather than by an event each object subscribes to.
+	/// </summary>
+	private void notifyTableEntryRemoved(object sender, CollectionChangedEventArgs e)
+	{
+		//Only the kinds of object another object can hold a reference to are worth a walk: the table
+		//entries, and the non graphical objects such as Material and ImageDefinition. A dictionary is
+		//a container rather than such a reference, and removing one entity of many must not turn into
+		//a walk of the whole document.
+		if (e.Item is CadDictionary || (e.Item is not TableEntry && e.Item is not NonGraphicalObject))
+		{
+			return;
+		}
+
+		//A handler replaces a reference, which does not change this collection, but the copy keeps
+		//the walk safe if one of them removes something else.
+		foreach (IHandledCadObject item in this._cadObjects.Values.ToArray())
+		{
+			if (item is CadObject cadObject && !ReferenceEquals(cadObject, e.Item))
+			{
+				cadObject.OnTableEntryRemoved(sender, e);
+			}
+		}
 	}
 
 	private bool updateCollection(string dictName, bool createDictionary, out CadDictionary dictionary)

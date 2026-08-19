@@ -285,20 +285,12 @@ public abstract class Entity : CadObject, IEntity
 		this._layer = CadObject.updateCollection(this.Layer, doc.Layers);
 		this._lineType = CadObject.updateCollection(this.LineType, doc.LineTypes);
 
-		doc.Layers.OnRemove += this.tableOnRemove;
-		doc.LineTypes.OnRemove += this.tableOnRemove;
-
-		//TODO: Ensure the event is set after the document is read or modified
-		doc.Materials?.OnRemove += this.tableOnRemove;
+		//The layer, line type and material tables used to be subscribed to here, one delegate per
+		//entity per table. The document calls OnTableEntryRemoved instead; see CadObject.
 	}
 
 	internal override void UnassignDocument()
 	{
-		this.Document.Layers.OnRemove -= this.tableOnRemove;
-		this.Document.LineTypes.OnRemove -= this.tableOnRemove;
-
-		this.Document.Materials?.OnRemove -= this.tableOnRemove;
-
 		base.UnassignDocument();
 
 		this.Layer = (Layer)this.Layer.Clone();
@@ -346,7 +338,7 @@ public abstract class Entity : CadObject, IEntity
 		return new Matrix3(transform.Matrix);
 	}
 
-	protected virtual void tableOnRemove(object sender, CollectionChangedEventArgs e)
+	internal override void OnTableEntryRemoved(object sender, CollectionChangedEventArgs e)
 	{
 		if (e.Item.Equals(this.Layer))
 		{
