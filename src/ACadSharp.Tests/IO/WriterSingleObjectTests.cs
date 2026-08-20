@@ -87,6 +87,7 @@ public abstract class WriterSingleObjectTests : IOTestsBase
 		Data.Add(new(nameof(SingleCaseGenerator.GeoData)));
 		Data.Add(new(nameof(SingleCaseGenerator.GroupOfEntities)));
 		Data.Add(new(nameof(SingleCaseGenerator.DrawOrderInModelSpace)));
+		Data.Add(new(nameof(SingleCaseGenerator.TwoSortTablesInOneDictionary)));
 		Data.Add(new(nameof(SingleCaseGenerator.ImageDefinitionWithoutImage)));
 		Data.Add(new(nameof(SingleCaseGenerator.LineTypeInBlock)));
 		Data.Add(new(nameof(SingleCaseGenerator.XData)));
@@ -1316,6 +1317,29 @@ public abstract class WriterSingleObjectTests : IOTestsBase
 
 			this.Document.ModelSpace.CreateExtendedDictionary();
 			this.Document.ModelSpace.XDictionary.Add(CadDictionary.AcadSortEnts, table);
+		}
+
+		//Two entries of one dictionary whose objects carry the same name. Every SortEntitiesTable
+		//is called ACAD_SORTENTS, so the key the file stores them under is the only thing that
+		//tells them apart: one customer drawing keeps 448 of them and used to lose 447.
+		public void TwoSortTablesInOneDictionary()
+		{
+			Circle first = new Circle { Radius = 10 };
+			Circle second = new Circle { Radius = 5 };
+
+			this.Document.Entities.Add(first);
+			this.Document.Entities.Add(second);
+
+			SortEntitiesTable one = new SortEntitiesTable(this.Document.ModelSpace);
+			one.Add(first, first.Handle);
+
+			SortEntitiesTable two = new SortEntitiesTable(this.Document.ModelSpace);
+			two.Add(second, second.Handle);
+
+			CadDictionary holder = new CadDictionary("sort_tables");
+			this.Document.RootDictionary.Add(holder);
+			holder.Add("first", one);
+			holder.Add("second", two);
 		}
 
 		public void ImageDefinitionWithoutImage()
