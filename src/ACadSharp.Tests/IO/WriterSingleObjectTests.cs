@@ -85,6 +85,9 @@ public abstract class WriterSingleObjectTests : IOTestsBase
 		Data.Add(new(nameof(SingleCaseGenerator.Dimensions)));
 		Data.Add(new(nameof(SingleCaseGenerator.DimensionWithLineType)));
 		Data.Add(new(nameof(SingleCaseGenerator.GeoData)));
+		Data.Add(new(nameof(SingleCaseGenerator.GroupOfEntities)));
+		Data.Add(new(nameof(SingleCaseGenerator.DrawOrderInModelSpace)));
+		Data.Add(new(nameof(SingleCaseGenerator.ImageDefinitionWithoutImage)));
 		Data.Add(new(nameof(SingleCaseGenerator.LineTypeInBlock)));
 		Data.Add(new(nameof(SingleCaseGenerator.XData)));
 		Data.Add(new(nameof(SingleCaseGenerator.XRef)));
@@ -1270,6 +1273,64 @@ public abstract class WriterSingleObjectTests : IOTestsBase
 
 			this.Document.Entities.Add(line);
 			this.Document.Entities.Add(anotherLine);
+		}
+
+		//Three objects a real drawing is full of and no case covered: a group, a draw order table
+		//and an image definition. The corpus has 341 image definitions in one drawing and 10,025
+		//sort tables in another, so a defect in any of them reaches a customer before it reaches a
+		//test.
+		public void GroupOfEntities()
+		{
+			Line first = new Line(new XYZ(0, 0, 0), new XYZ(10, 10, 0));
+			Line second = new Line(new XYZ(10, 10, 0), new XYZ(20, 0, 0));
+
+			this.Document.Entities.Add(first);
+			this.Document.Entities.Add(second);
+
+			Group group = new Group
+			{
+				Name = "my_group",
+				Description = "two lines that belong together",
+			};
+
+			//The group has to reach the document before its entities do: Group.Add refuses an
+			//entity that belongs to a different document, and a group outside a document has none.
+			CadDictionary groups = (CadDictionary)this.Document.RootDictionary[CadDictionary.AcadGroup];
+			groups.Add(group);
+
+			group.Add(first);
+			group.Add(second);
+		}
+
+		public void DrawOrderInModelSpace()
+		{
+			Circle behind = new Circle { Radius = 10 };
+			Circle inFront = new Circle { Radius = 5 };
+
+			this.Document.Entities.Add(behind);
+			this.Document.Entities.Add(inFront);
+
+			SortEntitiesTable table = new SortEntitiesTable(this.Document.ModelSpace);
+			table.Add(behind, behind.Handle);
+			table.Add(inFront, inFront.Handle);
+
+			this.Document.ModelSpace.CreateExtendedDictionary();
+			this.Document.ModelSpace.XDictionary.Add(CadDictionary.AcadSortEnts, table);
+		}
+
+		public void ImageDefinitionWithoutImage()
+		{
+			ImageDefinition definition = new ImageDefinition
+			{
+				Name = "my_image",
+				FileName = "an_image_that_is_not_there.png",
+				Size = new XY(640, 480),
+				DefaultSize = new XY(6.4, 4.8),
+				IsLoaded = false,
+			};
+
+			CadDictionary images = (CadDictionary)this.Document.RootDictionary[CadDictionary.AcadImageDict];
+			images.Add(definition);
 		}
 
 		public void GeoData()
