@@ -602,6 +602,10 @@ public class DwgReader : CadReaderBase<DwgReaderConfiguration>
 	{
 		Dictionary<ulong, long> handles = this.readHandles();
 
+		//The handle map says how many objects the file holds, so the builder's maps start at the
+		//size they will reach instead of doubling their way there.
+		this._builder.EnsureCapacity(handles.Count);
+
 		IDwgStreamReader sreader = null;
 		if (this._fileHeader.AcadVersion <= ACadVersion.AC1015)
 		{

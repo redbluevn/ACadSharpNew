@@ -45,6 +45,40 @@ internal abstract class CadDocumentBuilder
 
 	public VPortsTable VPorts { get; set; } = new VPortsTable();
 
+	/// <summary>
+	/// Tells the builder how many objects the file holds, before they are read.
+	/// </summary>
+	/// <remarks>
+	/// The two maps below end up with an entry per object in the drawing, and growing them from
+	/// nothing means allocating and copying an ever larger array of entries all the way up. A
+	/// reader that already knows the count - the DWG handle map has it - can say so and skip that.
+	/// The maps are replaced rather than resized because <c>EnsureCapacity</c> does not exist on
+	/// every target framework this library builds for.
+	/// </remarks>
+	/// <param name="count">Expected number of objects; ignored when it is not positive.</param>
+	public void EnsureCapacity(int count)
+	{
+		if (count <= 0)
+		{
+			return;
+		}
+
+		if (this.cadObjects.Count == 0)
+		{
+			this.cadObjects = new Dictionary<ulong, CadObject>(count);
+		}
+
+		if (this.cadObjectsTemplates.Count == 0)
+		{
+			this.cadObjectsTemplates = new Dictionary<ulong, ICadObjectTemplate>(count);
+		}
+
+		if (this.templatesMap.Count == 0)
+		{
+			this.templatesMap = new Dictionary<ulong, ICadObjectTemplate>(count);
+		}
+	}
+
 	protected Dictionary<ulong, CadObject> cadObjects = new();
 
 	protected Dictionary<ulong, ICadObjectTemplate> cadObjectsTemplates = new();
