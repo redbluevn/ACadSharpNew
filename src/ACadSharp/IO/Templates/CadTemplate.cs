@@ -5,6 +5,7 @@ using ACadSharp.Tables;
 using ACadSharp.XData;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace ACadSharp.IO.Templates;
 
@@ -14,9 +15,25 @@ internal abstract class CadTemplate : ICadObjectTemplate
 
 	public DxfClass DxfClass { get; set; }
 
-	public Dictionary<ulong, List<ExtendedDataRecord>> EDataTemplate { get; set; } = new();
+	//A template is built for every object in the file and almost none of them carry extended data,
+	//so these two dictionaries were created empty nearly a million times per drawing. They are
+	//created on the first access instead, which is what a reader that has extended data to store
+	//does anyway.
+	public Dictionary<ulong, List<ExtendedDataRecord>> EDataTemplate
+	{
+		get { return this._eDataTemplate ??= new(); }
+		set { this._eDataTemplate = value; }
+	}
 
-	public Dictionary<string, List<ExtendedDataRecord>> EDataTemplateByAppName { get; set; } = new();
+	public Dictionary<string, List<ExtendedDataRecord>> EDataTemplateByAppName
+	{
+		get { return this._eDataTemplateByAppName ??= new(); }
+		set { this._eDataTemplateByAppName = value; }
+	}
+
+	private Dictionary<ulong, List<ExtendedDataRecord>> _eDataTemplate;
+
+	private Dictionary<string, List<ExtendedDataRecord>> _eDataTemplateByAppName;
 
 	public bool HasBeenBuilt { get; private set; } = false;
 
@@ -90,7 +107,9 @@ internal abstract class CadTemplate : ICadObjectTemplate
 			}
 		}
 
-		foreach (var item in this.EDataTemplate)
+		//Read through the fields: going through the properties would build the dictionary this loop
+		//is about to find empty, for every object in the file.
+		foreach (var item in this._eDataTemplate ?? Enumerable.Empty<KeyValuePair<ulong, List<ExtendedDataRecord>>>())
 		{
 			if (builder.TryGetCadObject(item.Key, out AppId app))
 			{
@@ -102,7 +121,7 @@ internal abstract class CadTemplate : ICadObjectTemplate
 			}
 		}
 
-		foreach (var item in this.EDataTemplateByAppName)
+		foreach (var item in this._eDataTemplateByAppName ?? Enumerable.Empty<KeyValuePair<string, List<ExtendedDataRecord>>>())
 		{
 			if (builder.TryGetTableEntry(item.Key, out AppId app))
 			{
