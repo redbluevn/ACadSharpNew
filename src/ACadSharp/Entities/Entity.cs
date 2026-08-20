@@ -2,6 +2,7 @@
 using ACadSharp.Entities.ProxyGraphics;
 using ACadSharp.Objects;
 using ACadSharp.Tables;
+using ACadSharp.Tables.Collections;
 using CSMath;
 using System;
 using System.Collections.Generic;
@@ -275,12 +276,34 @@ public abstract class Entity : CadObject, IEntity
 		this.Transparency = entity.Transparency;
 	}
 
+	private static T resolveDefault<T>(T current, Table<T> table, string defaultName, Func<T> build)
+		where T : TableEntry
+	{
+		if (current != null)
+		{
+			return updateCollection(current, table);
+		}
+
+		if (table != null && table.TryGetValue(defaultName, out T entry))
+		{
+			return entry;
+		}
+
+		return updateCollection(build(), table);
+	}
+
 	internal override void AssignDocument(CadDocument doc)
 	{
 		base.AssignDocument(doc);
 
-		this._layer = CadObject.updateCollection(this.Layer, doc.Layers);
-		this._lineType = CadObject.updateCollection(this.LineType, doc.LineTypes);
+		//An entity that never had a layer assigned would otherwise build its default here only to
+		//throw it away: reading this.Layer creates a Layer, whose constructor creates a LineType of
+		//its own, and TryAdd then returns the table entry of the same name instead. The document
+		//always carries layer "0" and linetype "ByLayer", so the name is looked up directly and the
+		//two objects are never built. Building them stays as the fallback for a document that is
+		//missing them.
+		this._layer = resolveDefault(this._layer, doc.Layers, Layer.DefaultName, static () => Layer.Default);
+		this._lineType = resolveDefault(this._lineType, doc.LineTypes, LineType.ByLayerName, static () => LineType.ByLayer);
 
 		doc.Layers.OnRemove += this.tableOnRemove;
 		doc.LineTypes.OnRemove += this.tableOnRemove;
