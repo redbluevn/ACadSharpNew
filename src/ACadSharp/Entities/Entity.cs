@@ -46,7 +46,7 @@ public abstract class Entity : CadObject, IEntity
 	[DxfCodeValue(DxfReferenceType.Name, 8)]
 	public virtual Layer Layer
 	{
-		get { return this._layer; }
+		get { return this._layer ??= Layer.Default; }
 		set
 		{
 			if (value == null)
@@ -62,7 +62,7 @@ public abstract class Entity : CadObject, IEntity
 	[DxfCodeValue(DxfReferenceType.Name, 6)]
 	public virtual LineType LineType
 	{
-		get { return this._lineType; }
+		get { return this._lineType ??= LineType.ByLayer; }
 		set
 		{
 			if (value == null)
@@ -113,9 +113,13 @@ public abstract class Entity : CadObject, IEntity
 
 	private BookColor _bookColor = null;
 
-	private Layer _layer = Layer.Default;
+	//Layer.Default and LineType.ByLayer build a new table entry on every access, so initialising
+	//these fields here gave every entity two objects that a reader overwrites before anyone looks
+	//at them. They are created on the first read instead, which is the same object for the same
+	//entity, and none at all when the value is assigned first.
+	private Layer _layer;
 
-	private LineType _lineType = LineType.ByLayer;
+	private LineType _lineType;
 
 	private Material _material;
 
