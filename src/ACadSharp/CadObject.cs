@@ -23,7 +23,16 @@ public abstract class CadObject : IHandledCadObject
 	/// <summary>
 	/// Extended data attached to this object.
 	/// </summary>
-	public ExtendedDataDictionary ExtendedData { get; private set; }
+	//One of these per object, and a drawing holds hundreds of thousands of objects that carry no
+	//extended data at all. The dictionary is built on the first access instead; a caller that only
+	//reads finds it empty either way.
+	public ExtendedDataDictionary ExtendedData
+	{
+		get { return this._extendedData ??= new ExtendedDataDictionary(this); }
+		private set { this._extendedData = value; }
+	}
+
+	private ExtendedDataDictionary _extendedData;
 
 	/// <inheritdoc/>
 	/// <remarks>
@@ -100,7 +109,6 @@ public abstract class CadObject : IHandledCadObject
 	/// </summary>
 	public CadObject()
 	{
-		this.ExtendedData = new ExtendedDataDictionary(this);
 	}
 
 	/// <summary>
