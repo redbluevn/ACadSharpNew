@@ -120,7 +120,11 @@ namespace ACadSharp.IO.DWG
 			this._reader = reader;
 
 			this._handles = new Queue<ulong>(handles);
-			this._map = new Dictionary<ulong, long>(handleMap);
+			//The handle map holds an entry per object in the file, so copying it duplicated a table
+			//of nearly a million entries. This reader only looks handles up, never adds or removes,
+			//and the map is built by the reader that constructs this one and not used again after,
+			//so it is taken as it is.
+			this._map = handleMap;
 			this._classes = classes.ToDictionary(x => x.ClassNumber, x => x);
 
 			if (this._reader.Stream is MemoryStream memoryStream)
