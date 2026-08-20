@@ -1,4 +1,4 @@
-using ACadSharp.Entities;
+﻿using ACadSharp.Entities;
 using ACadSharp.Tests.Common;
 using ACadSharp.IO;
 using CSMath;
@@ -71,7 +71,6 @@ public class WipeoutClipTests
 			UVector = new XYZ(1, 0, 0),
 			VVector = new XYZ(0, 1, 0),
 			Size = new XY(10, 10),
-			ClipType = ClipType.Polygonal,
 			ClippingState = true,
 		};
 		wipeout.ClipBoundaryVertices.AddRange(_polygon);

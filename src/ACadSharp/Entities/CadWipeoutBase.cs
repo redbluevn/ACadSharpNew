@@ -282,9 +282,12 @@ public abstract class CadWipeoutBase : Entity
 	{
 		var result = base.IsValid(format, version, out errors);
 
-		if (this.ClipBoundaryVertices.Count < 2)
+		//An empty list is not an error: it means the image is not clipped, and both writers put
+		//the whole-image rectangle of GetEffectiveClipBoundary in the file, which is what AutoCAD
+		//itself writes for an unclipped image. A single vertex is not a boundary either way.
+		if (this.ClipBoundaryVertices.Count == 1)
 		{
-			errors.Add($"Invalid {nameof(ClipBoundaryVertices)} count: {this.ClipBoundaryVertices.Count}, must be at least 2.");
+			errors.Add($"Invalid {nameof(ClipBoundaryVertices)} count: {this.ClipBoundaryVertices.Count}, must be 0 for an unclipped image or at least 2.");
 			result = false;
 		}
 

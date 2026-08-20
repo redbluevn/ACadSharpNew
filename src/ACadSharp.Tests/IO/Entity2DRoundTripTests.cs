@@ -1,4 +1,4 @@
-using ACadSharp.Blocks;
+﻿using ACadSharp.Blocks;
 using ACadSharp.Entities;
 using ACadSharp.IO;
 using ACadSharp.Tables;
@@ -310,10 +310,11 @@ public class Entity2DRoundTripTests
 			{
 				Size = new XY(1, 1),
 				ClippingState = true,
-				//A rectangular boundary keeps two corners only; a boundary with four vertices has
-				//to say so, otherwise the writer stores the first two and the rest is lost.
-				ClipType = ClipType.Polygonal,
 			};
+
+			//A rectangular boundary keeps two corners only; a boundary with more vertices has to
+			//say so, otherwise the writer stores the first two and the rest is lost. ClipType is
+			//derived from the vertex count, so adding the four corners is what says it.
 			wipeout.ClipBoundaryVertices.Add(new XY(0, 0));
 			wipeout.ClipBoundaryVertices.Add(new XY(0, 1));
 			wipeout.ClipBoundaryVertices.Add(new XY(1, 1));
