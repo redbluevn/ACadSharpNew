@@ -109,6 +109,40 @@ public class SortEntitiesTableOrderTests
 		return table;
 	}
 
+	[Fact]
+	public void StaleEntriesAreDroppedAndReportedOnce()
+	{
+		//A table can refer to entities that are no longer in the drawing; AutoCAD drops those on
+		//open without counting them as errors. One production drawing carried 138,240 of them in
+		//one table. Dropping is right; one notification per entry was most of what that drawing
+		//said about itself.
+		CadDocument doc = new CadDocument();
+		SortEntitiesTable table = this.table(doc, out Entity[] entities);
+
+		//Two entries point at entities the document never held.
+		Line ghostA = new Line(new XYZ(5, 5, 0), new XYZ(6, 6, 0));
+		Line ghostB = new Line(new XYZ(7, 7, 0), new XYZ(8, 8, 0));
+		ghostA.Handle = 0xFFF1;
+		ghostB.Handle = 0xFFF2;
+		table.Add(ghostA, 0x400);
+		table.Add(ghostB, 0x500);
+
+		MemoryStream ms = new MemoryStream();
+		using (DwgWriter writer = new DwgWriter(ms, doc))
+		{
+			writer.Write();
+		}
+
+		var notes = new System.Collections.Generic.List<string>();
+		CadDocument read = DwgReader.Read(new MemoryStream(ms.ToArray()), (s, e) => notes.Add(e.Message));
+		SortEntitiesTable back = (SortEntitiesTable)read.ModelSpace.XDictionary[SortEntitiesTable.DictionaryEntryName];
+
+		Assert.Equal(3, back.Count());
+		var stale = notes.Where(n => n.Contains("SortEntitiesTable") && n.Contains("not in the drawing")).ToList();
+		Assert.Single(stale);
+		Assert.Contains("2 of 5", stale[0]);
+	}
+
 	private SortEntitiesTable table(CadDocument doc, out Entity[] entities)
 	{
 		entities = new Entity[]
