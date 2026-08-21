@@ -18,11 +18,24 @@ public class BlockActionReferencesTests
 {
 	private static string sample => Path.Combine(TestVariables.SamplesFolder, "dynamic-blocks", "BLOCKFLIPPARAMETER.dwg");
 
-	//There is no DWG theory here yet: the DWG writer does not round trip the evaluation graph of
-	//this sample at all (EvaluationGraph comes back null, measured on the commit before this
-	//change too), so a DWG assertion would be testing that defect rather than this one. The DWG
-	//writer change is covered by the production-drawing measurement in the commit message until
-	//the graph round trip is fixed.
+	//The DWG half arrived later than the DXF half: until the writers kept dynamic block data by
+	//default, the DWG came back with no evaluation graph at all, and a DWG assertion would have
+	//been testing that instead of this.
+
+	[Fact]
+	public void AnActionKeepsAReferenceToAParameterThroughDwg()
+	{
+		CadDocument doc = DwgReader.Read(sample);
+		(BlockFlipAction action, BlockFlipParameter parameter) = this.wire(doc);
+
+		MemoryStream ms = new MemoryStream();
+		using (DwgWriter writer = new DwgWriter(ms, doc))
+		{
+			writer.Write();
+		}
+
+		this.assertWired(DwgReader.Read(new MemoryStream(ms.ToArray())), action.Elements.Count);
+	}
 
 	[Fact]
 	public void AnActionKeepsAReferenceToAParameterThroughDxf()
