@@ -43,7 +43,7 @@ namespace ACadSharp.IO.Templates
 						entry.Item3.Value = obj;
 					}
 				}
-				else
+				else if (entry.Item2 != 0)
 				{
 					builder.Notify($"XRecord reference not found {entry.Item1}|{entry.Item2}", NotificationType.Warning);
 				}

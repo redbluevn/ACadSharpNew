@@ -3200,6 +3200,15 @@ internal class DxfObjectsSectionReader : DxfSectionReaderBase
 	{
 		this._reader.ReadNext();
 
+		//The cloning flag is written as a 280 in front of the data, and it is a property of the
+		//record, not an entry of it. Read as an entry it both loses the property and grows the
+		//record by one entry on every round trip through DXF.
+		if (this._reader.Code == 280)
+		{
+			template.CadObject.CloningFlags = (DictionaryCloningFlags)this._reader.ValueAsShort;
+			this._reader.ReadNext();
+		}
+
 		while (this._reader.DxfCode != DxfCode.Start)
 		{
 			switch (this._reader.GroupCodeValue)
@@ -3217,7 +3226,13 @@ internal class DxfObjectsSectionReader : DxfSectionReaderBase
 				case GroupCodeValueType.Handle:
 				case GroupCodeValueType.ObjectId:
 				case GroupCodeValueType.ExtendedDataHandle:
-					template.AddHandleReference(this._reader.Code, this._reader.ValueAsHandle);
+					//The entry is created here so that it keeps the place the record gives it; its
+					//value is filled in during build. A handle of 0 is a null reference AutoCAD
+					//writes on purpose, and the entry has to survive it.
+					template.AddHandleReference(
+						this._reader.Code,
+						this._reader.ValueAsHandle,
+						template.CadObject.CreateEntry(this._reader.Code, null));
 					break;
 				default:
 					template.CadObject.CreateEntry(this._reader.Code, this._reader.Value);

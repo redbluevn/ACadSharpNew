@@ -2512,7 +2512,10 @@ internal partial class DwgObjectWriter : DwgSectionIO
 
 		foreach (XRecord.Entry entry in xrecord.Entries)
 		{
-			if (entry.Value == null)
+			//An entry that links to an object is written even with no value: the file it came from
+			//holds a null handle there, the record is positional, and dropping the entry moves
+			//every entry after it.
+			if (entry.Value == null && !entry.HasLinkedObject)
 			{
 				continue;
 			}
@@ -2556,14 +2559,11 @@ internal partial class DwgObjectWriter : DwgSectionIO
 					break;
 				case GroupCodeValueType.Handle:
 					var obj = entry.GetReference();
-					if (obj == null)
-					{
-						this.writeStringInStream(ms, string.Empty);
-					}
-					else
-					{
-						this.writeStringInStream(ms, obj.Handle.ToString("X", CultureInfo.InvariantCulture));
-					}
+					//A null reference is written as the handle 0, which is what the reader parses
+					//back into a null reference. An empty string does not parse at all.
+					this.writeStringInStream(
+						ms,
+						(obj == null ? 0UL : obj.Handle).ToString("X", CultureInfo.InvariantCulture));
 					break;
 				case GroupCodeValueType.String:
 				case GroupCodeValueType.ExtendedDataString:
