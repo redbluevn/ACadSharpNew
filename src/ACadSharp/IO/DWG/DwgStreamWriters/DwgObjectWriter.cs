@@ -133,11 +133,17 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		return 0;
 	}
 
-	private bool isEntitySupported(Entity entity)
+	//notify: false asks the same question without saying anything, for callers that only need to
+	//know whether an entity will be in the file - a hatch boundary handle, for one.
+	private bool isEntitySupported(Entity entity, bool notify = true)
 	{
 		if (!entity.IsValid(CadFileFormat.DWG, this._version))
 		{
-			this.notify($"Invalid entity {entity.GetType().FullName} with handle {entity.Handle}", NotificationType.Warning);
+			if (notify)
+			{
+				this.notify($"Invalid entity {entity.GetType().FullName} with handle {entity.Handle}", NotificationType.Warning);
+			}
+
 			return false;
 		}
 
@@ -152,9 +158,13 @@ internal partial class DwgObjectWriter : DwgSectionIO
 				//own "Until R2007" branch, where the older inline cell layout would go. It is a
 				//limit of this writer, not of the format - AutoCAD's own AC1015 and AC1018 files
 				//carry tables - so say which limit it is, and which version keeps the object.
-				this.notify(
-					$"{entity.GetType().Name} {entity.Handle} is not written to a {this._version} file: only the {ACadVersion.AC1024} layout of it is implemented. {ACadVersion.AC1024} is the oldest version that keeps it.",
-					NotificationType.NotImplemented);
+				if (notify)
+				{
+					this.notify(
+						$"{entity.GetType().Name} {entity.Handle} is not written to a {this._version} file: only the {ACadVersion.AC1024} layout of it is implemented. {ACadVersion.AC1024} is the oldest version that keeps it.",
+						NotificationType.NotImplemented);
+				}
+
 				return false;
 			case Wall:
 			case MechanicalEntity:
@@ -162,7 +172,11 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			case Solid3D:
 			case CadBody:
 			case Region:
-				this.notify($"Entity type not implemented {entity.GetType().FullName}", NotificationType.NotImplemented);
+				if (notify)
+				{
+					this.notify($"Entity type not implemented {entity.GetType().FullName}", NotificationType.NotImplemented);
+				}
+
 				return false;
 			default:
 				return true;

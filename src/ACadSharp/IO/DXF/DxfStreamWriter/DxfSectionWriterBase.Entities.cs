@@ -155,11 +155,17 @@ internal abstract partial class DxfSectionWriterBase
 		this.writeExtendedData(entity.ExtendedData);
 	}
 
-	private bool isEntitySupported(Entity entity)
+	//notify: false asks the same question without saying anything, for callers that only need to
+	//know whether an entity will be in the file - a hatch boundary handle, for one.
+	private bool isEntitySupported(Entity entity, bool notify = true)
 	{
 		if (!entity.IsValid(CadFileFormat.DXF, this.Version))
 		{
-			this.notify($"Invalid entity {entity.GetType().FullName} with handle {entity.Handle}", NotificationType.Warning);
+			if (notify)
+			{
+				this.notify($"Invalid entity {entity.GetType().FullName} with handle {entity.Handle}", NotificationType.Warning);
+			}
+
 			return false;
 		}
 
@@ -183,9 +189,13 @@ internal abstract partial class DxfSectionWriterBase
 					//caller reads the name out of that file and sets ShapeName. Writing a name the
 					//shape file does not hold is worse than skipping: AutoCAD then refuses the whole
 					//drawing, measured with accoreconsole on samples/sample_AC1032.dwg.
-					this.notify(
-						$"Shape {shapeEntity.Handle} has no shape name, it cannot be written to DXF; it is the shape number {shapeEntity.ShapeIndex} of {shapeEntity.ShapeStyle?.Filename}",
-						NotificationType.Warning);
+					if (notify)
+					{
+						this.notify(
+							$"Shape {shapeEntity.Handle} has no shape name, it cannot be written to DXF; it is the shape number {shapeEntity.ShapeIndex} of {shapeEntity.ShapeStyle?.Filename}",
+							NotificationType.Warning);
+					}
+
 					return false;
 				}
 
@@ -194,7 +204,11 @@ internal abstract partial class DxfSectionWriterBase
 			case Solid3D:
 			case CadBody:
 			case Region:
-				this.notify($"Entity type not implemented {entity.GetType().FullName}", NotificationType.NotImplemented);
+				if (notify)
+				{
+					this.notify($"Entity type not implemented {entity.GetType().FullName}", NotificationType.NotImplemented);
+				}
+
 				return false;
 			default:
 				return true;
@@ -253,8 +267,14 @@ internal abstract partial class DxfSectionWriterBase
 			this.writeHatchBoundaryPathEdge(edge);
 		}
 
-		this._writer.Write(97, path.Entities.Count);
-		foreach (Entity entity in path.Entities)
+		//A handle pointing at an entity this writer does not write leaves the boundary pointing at
+		//nothing, and AutoCAD reads that as an undefined boundary and repairs the file by removing
+		//the associativity. Write the handles that will be there.
+		List<Entity> boundaryEntities = path.Entities
+			.Where(e => this.isEntitySupported(e, notify: false))
+			.ToList();
+		this._writer.Write(97, boundaryEntities.Count);
+		foreach (Entity entity in boundaryEntities)
 		{
 			this._writer.WriteHandle(330, entity);
 		}
@@ -531,7 +551,12 @@ internal abstract partial class DxfSectionWriterBase
 		this._writer.Write(2, hatch.Pattern.Name, map);
 
 		this._writer.Write(70, hatch.IsSolid ? (short)1 : (short)0, map);
-		this._writer.Write(71, hatch.IsAssociative ? (short)1 : (short)0, map);
+		//Associativity lives in the boundary handles. When none of them can be written - the boundary
+		//is a Region, say, which this writer does not write - the hatch is not associative in the
+		//file it produces, and claiming otherwise leaves AutoCAD to notice and repair it.
+		bool associative = hatch.IsAssociative
+			&& hatch.Paths.Any(p => p.Entities.Any(e => this.isEntitySupported(e, notify: false)));
+		this._writer.Write(71, associative ? (short)1 : (short)0, map);
 
 		this._writer.Write(91, hatch.Paths.Count, map);
 		foreach (var path in hatch.Paths)

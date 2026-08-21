@@ -795,7 +795,13 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		//Solidfill B 70 1 if solidfill, else 0
 		this._writer.WriteBit(hatch.IsSolid);
 		//Associative B 71 1 if associative, else 0
-		this._writer.WriteBit(hatch.IsAssociative);
+		//Associativity lives in the boundary handles. When none of them can be written - the
+		//boundary is a Region, say, which this writer does not write - the hatch is not associative
+		//in the file it produces, and claiming otherwise leaves AutoCAD to notice and repair it
+		//("Boundary Undefined - Remove Associativity").
+		bool associative = hatch.IsAssociative
+			&& hatch.Paths.Any(p => p.Entities.Any(e => this.isEntitySupported(e, notify: false)));
+		this._writer.WriteBit(associative);
 
 		//Numpaths BL 91 Number of paths enclosing the hatch
 		this._writer.WriteBitLong(hatch.Paths.Count);
@@ -930,8 +936,14 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			}
 
 			//numboundaryobjhandles BL 97 Number of boundary object handles for this path
-			this._writer.WriteBitLong(boundaryPath.Entities.Count);
-			foreach (Entity e in boundaryPath.Entities)
+			//A handle pointing at an entity this writer does not write leaves the boundary pointing
+			//at nothing, and AutoCAD reads that as an undefined boundary and repairs the file by
+			//removing the associativity. Write the handles that will be there.
+			List<Entity> boundaryEntities = boundaryPath.Entities
+				.Where(e => this.isEntitySupported(e, notify: false))
+				.ToList();
+			this._writer.WriteBitLong(boundaryEntities.Count);
+			foreach (Entity e in boundaryEntities)
 			{
 				//boundaryhandle H 330 boundary handle(soft pointer)
 				this._writer.HandleReference(DwgReferenceType.SoftPointer, e);
