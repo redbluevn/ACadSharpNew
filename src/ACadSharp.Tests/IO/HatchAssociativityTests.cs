@@ -11,6 +11,9 @@ namespace ACadSharp.Tests.IO;
 /// A hatch is associative because its boundary points at entities. When those entities are not
 /// written - a Region, say, which neither writer implements - the file must not claim otherwise,
 /// or AutoCAD reads the boundary as undefined and repairs the drawing.
+///
+/// DWG only. The same change in the DXF writer was measured on real drawings and made two of them
+/// worse (one by 6 audit errors, one by 2), so it is not made there; see T64.
 /// </summary>
 public class HatchAssociativityTests
 {
@@ -34,21 +37,6 @@ public class HatchAssociativityTests
 		}
 
 		this.assertNotAssociative(DwgReader.Read(new MemoryStream(ms.ToArray())));
-	}
-
-	[Theory]
-	[MemberData(nameof(Versions))]
-	public void DxfDropsAnAssociativityItCannotWrite(ACadVersion version)
-	{
-		CadDocument doc = this.document(version);
-
-		MemoryStream ms = new MemoryStream();
-		using (DxfWriter writer = new DxfWriter(ms, doc, false))
-		{
-			writer.Write();
-		}
-
-		this.assertNotAssociative(DxfReader.Read(new MemoryStream(ms.ToArray())));
 	}
 
 	[Theory]

@@ -936,12 +936,13 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			}
 
 			//numboundaryobjhandles BL 97 Number of boundary object handles for this path
-			//A handle pointing at an entity this writer does not write leaves the boundary pointing
-			//at nothing, and AutoCAD reads that as an undefined boundary and repairs the file by
-			//removing the associativity. Write the handles that will be there.
-			List<Entity> boundaryEntities = boundaryPath.Entities
-				.Where(e => this.isEntitySupported(e, notify: false))
-				.ToList();
+			//The source objects of a boundary belong to an associative hatch and to no other kind,
+			//so a hatch written as not associative lists none of them; and a handle pointing at an
+			//entity this writer does not write points at nothing. Both leave AutoCAD repairing the
+			//file it just opened.
+			List<Entity> boundaryEntities = associative
+				? boundaryPath.Entities.Where(e => this.isEntitySupported(e, notify: false)).ToList()
+				: new List<Entity>();
 			this._writer.WriteBitLong(boundaryEntities.Count);
 			foreach (Entity e in boundaryEntities)
 			{
