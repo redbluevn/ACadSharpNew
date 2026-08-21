@@ -680,9 +680,10 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 
 		foreach (var e in record.Entries)
 		{
-			//An entry whose handle could not be resolved when the file was read keeps its place in
-			//the record with a null value; there is nothing to write for it.
-			if (e.Value == null)
+			//An entry that links to an object is written even with no value: AutoCAD writes a null
+			//handle there on purpose, the record is positional, and dropping the entry moves every
+			//entry after it.
+			if (e.Value == null && !e.HasLinkedObject)
 			{
 				continue;
 			}
@@ -705,7 +706,7 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 				case GroupCodeValueType.ObjectId:
 				case GroupCodeValueType.ExtendedDataHandle:
 					var obj = e.Value as IHandledCadObject;
-					this._writer.Write(e.Code, obj.Handle);
+					this._writer.Write(e.Code, obj == null ? 0UL : obj.Handle);
 					break;
 				default:
 					this._writer.Write(e.Code, e.Value);
