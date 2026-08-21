@@ -30,6 +30,13 @@ namespace ACadSharp.IO.Templates
 		{
 			base.build(builder);
 
+			//A handle of 0 is a null reference AutoCAD writes on purpose; a non-zero handle that
+			//resolves to nothing is stale, and AutoCAD saves it as 0 too (its own save of a production
+			//drawing holds 20,022 such zeros where the original held 20,022 handles that name
+			//nothing). The entry keeps its place with a null value either way - what differs is only
+			//whether it is worth a word, and if so, one per record rather than one per entry.
+			int stale = 0;
+			ulong firstStale = 0;
 			foreach (var entry in _entries)
 			{
 				if (builder.TryGetCadObject<CadObject>(entry.Item2, out CadObject obj))
@@ -45,8 +52,20 @@ namespace ACadSharp.IO.Templates
 				}
 				else if (entry.Item2 != 0)
 				{
-					builder.Notify($"XRecord reference not found {entry.Item1}|{entry.Item2}", NotificationType.Warning);
+					if (stale == 0)
+					{
+						firstStale = entry.Item2;
+					}
+
+					stale++;
 				}
+			}
+
+			if (stale > 0)
+			{
+				builder.Notify(
+					$"XRecord {this.CadObject.Handle}: {stale} of {_entries.Count} handle entries refer to objects that are not in the drawing (first: {firstStale}); kept in place as null references, which is how AutoCAD saves them",
+					NotificationType.Warning);
 			}
 		}
 	}
