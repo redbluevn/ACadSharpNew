@@ -209,15 +209,15 @@ public partial class SortEntitiesTable : NonGraphicalObject, IDxfClassDefined, I
 			return;
 		}
 
-		this._sorters.Sort();
-
-		int index = this._sorters.IndexOf(existing);
-		if (index < 0 || index >= this._sorters.Count - 1)
+		//A sorted view, not a sort in place: the stored order is what the file gave and is kept.
+		List<Sorter> sorted = this._sorters.OrderBy(s => s.SortHandle).ToList();
+		int index = sorted.IndexOf(existing);
+		if (index < 0 || index >= sorted.Count - 1)
 		{
 			return;
 		}
 
-		Sorter next = this._sorters[index + 1];
+		Sorter next = sorted[index + 1];
 		(existing.SortHandle, next.SortHandle) = (next.SortHandle, existing.SortHandle);
 	}
 
@@ -234,13 +234,17 @@ public partial class SortEntitiesTable : NonGraphicalObject, IDxfClassDefined, I
 			return;
 		}
 
-		int index = this._sorters.OrderBy(s => s.SortHandle).ToList().IndexOf(existing);
-		if (index <= 0 || _sorters.Count < 2)
+		//The neighbour has to come from the same sorted view the index came from. Taking it from
+		//the stored list swapped with whatever happened to sit there, which was only right while
+		//enumeration sorted the list in place as a side effect.
+		List<Sorter> sorted = this._sorters.OrderBy(s => s.SortHandle).ToList();
+		int index = sorted.IndexOf(existing);
+		if (index <= 0)
 		{
 			return;
 		}
 
-		Sorter previous = this._sorters[index - 1];
+		Sorter previous = sorted[index - 1];
 		(existing.SortHandle, previous.SortHandle) = (previous.SortHandle, existing.SortHandle);
 	}
 
