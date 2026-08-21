@@ -78,6 +78,12 @@ internal abstract class CadTemplate : ICadObjectTemplate
 			this.CadObject.XDictionary = cadDictionary;
 		}
 
+		//A reactor handle that resolves to nothing is stale - the object it named was deleted and
+		//the back-reference was not. AutoCAD drops those silently on open (checked against its own
+		//save of a production drawing: none of 150 such handles names any object in it). Say it
+		//once per object, not once per handle.
+		int stale = 0;
+		ulong firstStale = 0;
 		foreach (ulong handle in this.ReactorsHandles)
 		{
 			if (builder.TryGetCadObject(handle, out CadObject reactor))
@@ -86,8 +92,20 @@ internal abstract class CadTemplate : ICadObjectTemplate
 			}
 			else
 			{
-				builder.Notify($"Reactor with handle {handle} not found", NotificationType.Warning);
+				if (stale == 0)
+				{
+					firstStale = handle;
+				}
+
+				stale++;
 			}
+		}
+
+		if (stale > 0)
+		{
+			builder.Notify(
+				$"{this.CadObject.GetType().Name} {this.CadObject.Handle}: {stale} of {this.ReactorsHandles.Count} reactors refer to objects that are not in the drawing (first: {firstStale}); dropped, as AutoCAD does",
+				NotificationType.Warning);
 		}
 
 		foreach (var item in this.EDataTemplate)
