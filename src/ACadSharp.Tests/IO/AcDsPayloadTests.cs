@@ -2,6 +2,7 @@
 using System;
 using CSMath;
 using ACadSharp.IO;
+using ACadSharp.IO.DWG.DwgStreamWriters;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -167,6 +168,48 @@ public class AcDsPayloadTests
 		Assert.NotEmpty(geometry);
 		Assert.All(geometry, entity => Assert.NotEqual(Guid.Empty, entity.Guid));
 		Assert.Equal(geometry.Length, geometry.Select(e => e.Guid).Distinct().Count());
+	}
+
+	[Fact]
+	public void AnR2013PlusDrawingIsWrittenWithItsGeometryInTheDataStore()
+	{
+		//Before this, a region or a solid was left out of every R2013+ file this library wrote, with a
+		//notification saying which version keeps it: the geometry belongs in the AcDs data section and
+		//no section was produced. Measured in AutoCAD 2027 now: the sample written back at R2018 opens
+		//and audits 0 with nothing erased, and AutoCAD's own DXF export of our file counts the same
+		//two solids, one region and four ASM_Data records as its export of the source.
+		CadDocument doc = DwgReader.Read(sampleR2018);
+		ModelerGeometry[] before = this.modelerGeometry(doc);
+		Assert.Equal(3, before.Length);
+
+		using MemoryStream stream = new();
+		using (DwgWriter writer = new(stream, doc))
+		{
+			writer.Write();
+		}
+
+		CadDocument back = DwgReader.Read(new MemoryStream(stream.ToArray()));
+		ModelerGeometry[] after = this.modelerGeometry(back);
+
+		Assert.Equal(before.Length, after.Length);
+		for (int i = 0; i < before.Length; i++)
+		{
+			Assert.Equal(before[i].AcisData, after[i].AcisData);
+			Assert.Equal(before[i].Guid, after[i].Guid);
+		}
+	}
+
+	[Fact]
+	public void TheDataStoreIsOnlyWrittenForTheVersionsThatKeepGeometryInIt()
+	{
+		//R2010 carries the payload inside the entity, so a store there would be a section with nothing
+		//to say. The two have to agree with the bit each entity carries, which is why one predicate
+		//answers for both.
+		CadDocument doc = DwgReader.Read(sampleR2018);
+
+		Assert.Equal(3, DwgPrototype1bWriter.CollectPayloads(doc, ACadVersion.AC1032).Count);
+		Assert.Equal(3, DwgPrototype1bWriter.CollectPayloads(doc, ACadVersion.AC1027).Count);
+		Assert.Empty(DwgPrototype1bWriter.CollectPayloads(doc, ACadVersion.AC1024));
 	}
 
 	private ModelerGeometry[] modelerGeometry(CadDocument doc)

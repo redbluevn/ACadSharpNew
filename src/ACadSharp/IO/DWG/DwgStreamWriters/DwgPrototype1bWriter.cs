@@ -17,11 +17,21 @@ namespace ACadSharp.IO.DWG.DwgStreamWriters
 	/// entities can only be written as shapes with no geometry, which is why they were left out of
 	/// every R2013+ file this library produced.
 	///
-	/// The layout was read off a real section with <c>OracleDump acdsdump</c> rather than from a
-	/// specification. What is written here is the smallest store that carries payloads: the six
-	/// schemas AutoCAD always defines, one schema-data segment, and one data segment holding every
-	/// payload inline. No thumbnails, no free-space map, no previous-save copy and no blob paging -
-	/// each of those is optional to the reader, and none of them carries geometry.
+	/// The layout was read off real sections with <c>OracleDump acdsdump</c> rather than from a
+	/// specification, and the one that mattered came from a drawing WBLOCKed out of an AutoCAD
+	/// session: every store in a drawing AutoCAD has merely saved has been grown by earlier saves,
+	/// with freed segments, a previous-save copy and a second schema-data segment. A WBLOCK writes
+	/// one from scratch, and that is the shape reproduced here - the segment index first, six
+	/// schemas in one schema-data segment, one data segment holding every payload inline, and no
+	/// free-space map, previous-save copy or blob paging.
+	///
+	/// What kept AutoCAD from accepting a store this class built, through four earlier attempts, was
+	/// two fields neither reader needed: the second word of a data record header, which AutoCAD
+	/// writes as 1, and the system-data alignment of a segment header, which says where that
+	/// segment's table of names begins. With the names unreachable AutoCAD cannot match a schema by
+	/// name, so the record it holds belongs to nothing and the entity pointing at it is erased on
+	/// load - which is exactly what its audit log said, and neither field changes what this library
+	/// reads back.
 	/// </remarks>
 	internal class DwgPrototype1bWriter
 	{
@@ -60,73 +70,84 @@ namespace ACadSharp.IO.DWG.DwgStreamWriters
 
 		private const int SchemaDataRevision = 1;
 
-		//Segment numbering. Zero is left unused, as it is in the files measured: a data index entry
-		//with segment zero is a stub the reader skips.
-		private const uint SchemaDataSegment = 1;
+		//Segment numbering and file order, both taken from a store AutoCAD built from scratch: a
+		//drawing WBLOCKed out of a session, which is the only way to get AutoCAD to write a store
+		//that has not been grown by repeated saves. The segment index comes first, right after the
+		//file header, and there is no free-space map and no previous-save copy - a fresh store has
+		//neither. Zero is left unused: a data index entry with segment zero is a stub the reader
+		//skips.
+		private const uint SegmentIndexSegment = 1;
 
-		private const uint SchemaIndexSegment = 2;
+		private const uint DataIndexSegment = 2;
 
-		private const uint SearchSegment = 3;
+		private const uint DataSegment = 3;
 
-		private const uint DataIndexSegment = 4;
+		private const uint SchemaIndexSegment = 4;
 
-		private const uint DataSegment = 5;
+		private const uint SchemaDataSegment = 5;
 
-		private const uint SegmentIndexSegment = 6;
+		private const uint SearchSegment = 6;
 
-		private const uint FreeSpaceSegment = 7;
+		private const uint SegmentCount = 7;
 
-		private const uint PreviousSaveSegment = 8;
+		//Eight-byte entries sit in front of the schemas in a schema-data segment, and the schema index
+		//has to declare them or the reader will look for the schemas in the wrong place. Their meaning
+		//is not known, but their count is: AutoCAD writes **four per schema that has more than one
+		//property**. A store with the thumbnail schema alone carries four; one that also has
+		//AcDb3DSolid_ASM_Data carries eight. This store has both, so it needs eight - with four, the
+		//two indices each of those schemas declares pointed past the end of the array.
+		private static readonly uint[] UnknownSchemaPropertyFlags = { 1, 0, 1, 1, 1, 0, 1, 1 };
 
-		private const uint SegmentCount = 9;
-
-		//Four eight-byte entries sit in front of the schemas in a schema-data segment, and the schema
-		//index has to declare them or the reader will look for the schemas in the wrong place. Their
-		//meaning is not known; the shape and the values are the ones every file measured carries.
-		private static readonly uint[] UnknownSchemaPropertyFlags = { 1, 1, 1, 0 };
+		//The identifiers AutoCAD puts on those entries in a freshly built store.
+		private static readonly uint[] UnknownSchemaPropertyIds = { 0, 2, 5, 3, 4, 2, 5, 4 };
 
 		private const int UnknownSchemaPropertySize = 8;
 
-		//The property names of every schema, in one table shared by the single schema-data segment.
+		//The property names, in the order the schemas that own them are written. Every schema names
+		//its own properties: AcDbDs::ID appears once per schema that has one, never shared, which is
+		//how every store AutoCAD writes does it.
 		private const int NameAcDbDsId = 0;
 
 		private const int NameThumbnailData = 1;
 
-		private const int NameTreatedAsObjectData = 2;
+		private const int NameAsmId = 2;
 
-		private const int NameLegacy = 3;
+		private const int NameAsmData = 3;
 
-		private const int NameIndexable = 4;
+		private const int NameTreatedAsObjectData = 4;
 
-		private const int NameHandleAttribute = 5;
+		private const int NameLegacy = 5;
 
-		private const int NameAsmData = 6;
+		private const int NameIndexable = 6;
+
+		private const int NameHandleAttribute = 7;
 
 		private static readonly string[] PropertyNames =
 		{
 			"AcDbDs::ID",
 			"Thumbnail_Data",
+			"AcDbDs::ID",
+			"ASM_Data",
 			"AcDbDs::TreatedAsObjectData",
 			"AcDbDs::Legacy",
 			"AcDs:Indexable",
 			"AcDbDs::HandleAttribute",
-			"ASM_Data",
 		};
 
-		//The six schemas AutoCAD defines, in its order and numbering. Only the last one is used here,
-		//but a file carrying only that one is not what AutoCAD writes, and the DXF form of this
-		//section was measured to want the whole set too.
+		//The six schemas AutoCAD defines, in the order and numbering a fresh store uses. Only the
+		//second one carries anything here, but a store holding that one alone is not what AutoCAD
+		//writes, and the DXF form of this section was measured to want the whole set too.
 		private static readonly string[] SchemaNames =
 		{
 			"AcDb_Thumbnail_Schema",
+			"AcDb3DSolid_ASM_Data",
 			"AcDbDs::TreatedAsObjectDataSchema",
 			"AcDbDs::LegacySchema",
 			"AcDbDs::IndexedPropertySchema",
 			"AcDbDs::HandleAttributeSchema",
-			"AcDb3DSolid_ASM_Data",
 		};
 
-		private const int AsmSchemaIndex = 5;
+		private const int AsmSchemaIndex = 1;
 
 		private readonly IList<Payload> _payloads;
 
@@ -139,14 +160,14 @@ namespace ACadSharp.IO.DWG.DwgStreamWriters
 		/// The modeler geometry of a document that has a payload the data store should carry, in
 		/// handle order - the order the search entry lists them in.
 		/// </summary>
-		public static IList<Payload> CollectPayloads(CadDocument document)
+		public static IList<Payload> CollectPayloads(CadDocument document, ACadVersion version)
 		{
 			List<Payload> found = new();
 			foreach (Tables.BlockRecord record in document.BlockRecords)
 			{
 				foreach (ModelerGeometry geometry in record.Entities.OfType<ModelerGeometry>())
 				{
-					if (geometry.AcisData != null && geometry.AcisData.Length > 0)
+					if (KeepsGeometryInDataStore(geometry, version))
 					{
 						found.Add(new Payload(geometry.Handle, geometry.AcisData));
 					}
@@ -154,6 +175,24 @@ namespace ACadSharp.IO.DWG.DwgStreamWriters
 			}
 
 			return found.OrderBy(p => p.Handle).ToList();
+		}
+
+		/// <summary>
+		/// Whether the geometry of this object belongs in the data store rather than in the object
+		/// itself, at the version being written.
+		/// </summary>
+		/// <remarks>
+		/// The entity says so with a bit of its own, and the two have to agree: a bit set with no
+		/// record behind it sends AutoCAD looking for geometry that is not there, and a record with
+		/// no bit in front of it is never looked for.
+		/// </remarks>
+		public static bool KeepsGeometryInDataStore(CadObject cadObject, ACadVersion version)
+		{
+			return version >= ACadVersion.AC1027
+				&& cadObject is ModelerGeometry geometry
+				&& geometry.AcisData != null
+				&& geometry.AcisData.Length > 0
+				&& geometry.IsBinaryAcisData;
 		}
 
 		public MemoryStream Write()
@@ -164,50 +203,34 @@ namespace ACadSharp.IO.DWG.DwgStreamWriters
 			byte[] dataIndex = this.writeDataIndex();
 			byte[] data = this.writeData();
 
-			//Offsets can only be filled in once every segment size is known, so the segments are
-			//built first and the index that points at them last.
+			//The segment index comes first, so its own size has to be known before anything is
+			//placed; it is fixed by the entry count.
+			ulong segmentIndexOffset = FileHeaderSize;
 			Dictionary<uint, (ulong offset, uint size)> placed = new();
-			int position = FileHeaderSize;
+			int position = FileHeaderSize + segmentIndexSize();
 			void place(uint index, byte[] built)
 			{
 				placed[index] = ((ulong)position, (uint)built.Length);
 				position += built.Length;
 			}
 
-			place(SchemaDataSegment, schemaData);
-			place(SchemaIndexSegment, schemaIndex);
-			place(SearchSegment, search);
 			place(DataIndexSegment, dataIndex);
 			place(DataSegment, data);
+			place(SchemaIndexSegment, schemaIndex);
+			place(SchemaDataSegment, schemaData);
+			place(SearchSegment, search);
 
-			byte[] freeSpace = writeFreeSpace();
-			place(FreeSpaceSegment, freeSpace);
-
-			ulong segmentIndexOffset = (ulong)position;
 			byte[] segmentIndex = this.writeSegmentIndex(placed, segmentIndexOffset);
-			position += segmentIndex.Length;
-
-			//The previous-save copy repeats the file header, so it can only be built once the header
-			//it repeats is known.
-			byte[] previousSave = this.writePreviousSave(segmentIndexOffset, position);
-			placed[PreviousSaveSegment] = ((ulong)position, (uint)previousSave.Length);
-			int total = position + previousSave.Length;
-
-			//Adding the previous-save segment moved the end of the file, so the index is rebuilt with
-			//it in place. Its own size does not change, so no offset already written moves.
-			segmentIndex = this.writeSegmentIndex(placed, segmentIndexOffset);
 
 			MemoryStream stream = new();
 			using BinaryWriter writer = new(stream, Encoding.ASCII, true);
-			this.writeFileHeader(writer, segmentIndexOffset, total);
-			writer.Write(schemaData);
-			writer.Write(schemaIndex);
-			writer.Write(search);
+			this.writeFileHeader(writer, segmentIndexOffset, position);
+			writer.Write(segmentIndex);
 			writer.Write(dataIndex);
 			writer.Write(data);
-			writer.Write(freeSpace);
-			writer.Write(segmentIndex);
-			writer.Write(previousSave);
+			writer.Write(schemaIndex);
+			writer.Write(schemaData);
+			writer.Write(search);
 			return stream;
 		}
 
@@ -226,11 +249,11 @@ namespace ACadSharp.IO.DWG.DwgStreamWriters
 			writer.Write((int)SchemaIndexSegment);
 			writer.Write((int)DataIndexSegment);
 			writer.Write((int)SearchSegment);
-			writer.Write((int)PreviousSaveSegment);
+			writer.Write(0);                            //No previous save: this store is new
 			writer.Write(fileSize);
 			writer.Write(0);
-			writer.Write((int)FreeSpaceSegment);
-			writer.Write(1);                            //One free-space entry
+			writer.Write(0);                            //No free-space map, and so no entries
+			writer.Write(0);
 			writer.Write(0);
 			writer.Write(new byte[FileHeaderSize - 72]);
 		}
@@ -267,32 +290,6 @@ namespace ACadSharp.IO.DWG.DwgStreamWriters
 			}
 
 			return result;
-		}
-
-		private byte[] writeFreeSpace()
-		{
-			MemoryStream stream = new();
-			using (BinaryWriter writer = new(stream, Encoding.ASCII, true))
-			{
-				writer.Write(0UL);
-				//Nothing in this store is free: every segment is written full and padded to its
-				//boundary. The map still has to exist, so it describes an empty region.
-				writer.Write(0UL);
-				writer.Write(0u);
-			}
-
-			return buildSegment("freesp", FreeSpaceSegment, stream.ToArray());
-		}
-
-		private byte[] writePreviousSave(ulong segmentIndexOffset, int fileSize)
-		{
-			MemoryStream stream = new();
-			using (BinaryWriter writer = new(stream, Encoding.ASCII, true))
-			{
-				this.writeFileHeader(writer, segmentIndexOffset, fileSize);
-			}
-
-			return buildSegment("prvsav", PreviousSaveSegment, stream.ToArray());
 		}
 
 		private byte[] writeSegmentIndex(Dictionary<uint, (ulong offset, uint size)> placed, ulong segmentIndexOffset)
@@ -346,25 +343,25 @@ namespace ACadSharp.IO.DWG.DwgStreamWriters
 			}
 
 			mark(0);
-			schema(writer, new ulong[] { 0, 1 }, new[]
+			schema(writer, new ulong[] { 0, 2 }, new[]
 			{
-				property(NameAcDbDsId, 10, new byte[8], new byte[] { 3, 0, 0, 0, 0, 0, 0, 0 }),
+				property(NameAcDbDsId, 10, new byte[] { 3, 0, 0, 0, 0, 0, 0, 0 }, new byte[] { 1, 0, 0, 0, 0, 0, 0, 0 }),
 				property(NameThumbnailData, 15),
 			});
 			mark(1);
-			schema(writer, Array.Empty<ulong>(), new[] { property(NameTreatedAsObjectData, 1) });
-			mark(2);
-			schema(writer, Array.Empty<ulong>(), new[] { property(NameLegacy, 1) });
-			mark(3);
-			schema(writer, Array.Empty<ulong>(), new[] { property(NameIndexable, 1) });
-			mark(4);
-			schema(writer, Array.Empty<ulong>(), new[] { handleAttributeProperty() });
-			mark(5);
-			schema(writer, new ulong[] { 6, 4 }, new[]
+			schema(writer, new ulong[] { 4, 7 }, new[]
 			{
-				property(NameAcDbDsId, 10, new byte[8], new byte[] { 5, 0, 0, 0, 0, 0, 0, 0 }),
+				property(NameAsmId, 10, new byte[] { 6, 0, 0, 0, 0, 0, 0, 0 }, new byte[] { 5, 0, 0, 0, 0, 0, 0, 0 }),
 				property(NameAsmData, 15),
 			});
+			mark(2);
+			schema(writer, Array.Empty<ulong>(), new[] { property(NameTreatedAsObjectData, 1) });
+			mark(3);
+			schema(writer, Array.Empty<ulong>(), new[] { property(NameLegacy, 1) });
+			mark(4);
+			schema(writer, Array.Empty<ulong>(), new[] { property(NameIndexable, 1) });
+			mark(5);
+			schema(writer, Array.Empty<ulong>(), new[] { handleAttributeProperty() });
 		}
 
 		private static void writeUnknownSchemaProperties(BinaryWriter writer)
@@ -378,6 +375,7 @@ namespace ACadSharp.IO.DWG.DwgStreamWriters
 
 		private byte[] writeSchemaData()
 		{
+			int names;
 			MemoryStream stream = new();
 			using (BinaryWriter writer = new(stream, Encoding.ASCII, true))
 			{
@@ -385,6 +383,7 @@ namespace ACadSharp.IO.DWG.DwgStreamWriters
 				this.writeSchemas(writer, null);
 
 				align(writer, 16);
+				names = nameTableAlignment(writer);
 
 				writer.Write((uint)PropertyNames.Length);
 				foreach (string name in PropertyNames)
@@ -394,7 +393,22 @@ namespace ACadSharp.IO.DWG.DwgStreamWriters
 				}
 			}
 
-			return buildSegment("schdat", SchemaDataSegment, stream.ToArray());
+			return buildSegment("schdat", SchemaDataSegment, stream.ToArray(), systemDataAlignmentOffset: names);
+		}
+
+		/// <summary>
+		/// Where the table of names begins in a segment, in sixteen-byte units from the start of the
+		/// segment header.
+		/// </summary>
+		/// <remarks>
+		/// A segment header carries this as its system-data alignment, and it was written as zero
+		/// here. That is what kept AutoCAD from accepting a store this writer built: with the names
+		/// unreachable it cannot match a schema by name, so the record it holds belongs to nothing
+		/// and the entity that points at it is erased on load.
+		/// </remarks>
+		private static int nameTableAlignment(BinaryWriter writer)
+		{
+			return (int)(((uint)SegmentHeaderSize + (uint)writer.BaseStream.Position) / 16);
 		}
 
 		/// <summary>The byte offset of each schema inside the schema-data segment content.</summary>
@@ -412,11 +426,12 @@ namespace ACadSharp.IO.DWG.DwgStreamWriters
 		{
 			int[] offsets = this.schemaOffsets();
 
+			int names;
 			MemoryStream stream = new();
 			using (BinaryWriter writer = new(stream, Encoding.ASCII, true))
 			{
 				writer.Write((uint)SchemaNames.Length);
-				writer.Write(0x55555555u);
+				writer.Write(0u);
 				for (int i = 0; i < SchemaNames.Length; i++)
 				{
 					writer.Write((uint)i);              //The schema's own number
@@ -430,14 +445,15 @@ namespace ACadSharp.IO.DWG.DwgStreamWriters
 				writer.Write((uint)UnknownSchemaPropertyFlags.Length);
 				for (int i = 0; i < UnknownSchemaPropertyFlags.Length; i++)
 				{
-					writer.Write((uint)i);
+					writer.Write(UnknownSchemaPropertyIds[i]);
 					writer.Write(SchemaDataSegment);
 					writer.Write((uint)(i * UnknownSchemaPropertySize));
 				}
 
-				writer.Write(0u);
+				writer.Write(3u);
 
 				align(writer, 16);
+				names = nameTableAlignment(writer);
 
 				writer.Write((uint)SchemaNames.Length);
 				foreach (string name in SchemaNames)
@@ -447,7 +463,7 @@ namespace ACadSharp.IO.DWG.DwgStreamWriters
 				}
 			}
 
-			return buildSegment("schidx", SchemaIndexSegment, stream.ToArray());
+			return buildSegment("schidx", SchemaIndexSegment, stream.ToArray(), systemDataAlignmentOffset: names);
 		}
 
 		private byte[] writeSearch()
@@ -512,7 +528,7 @@ namespace ACadSharp.IO.DWG.DwgStreamWriters
 				foreach (Payload payload in this._payloads)
 				{
 					writer.Write((uint)DataHeaderSize);
-					writer.Write(0u);
+					writer.Write(1u);
 					writer.Write(payload.Handle);
 					writer.Write((uint)offset);
 					offset += 4 + payload.Data.Length;

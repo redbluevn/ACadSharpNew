@@ -1,4 +1,4 @@
-using ACadSharp.Entities;
+﻿using ACadSharp.Entities;
 using ACadSharp.IO;
 using ACadSharp.Tests.Common;
 using System.IO;
@@ -101,12 +101,14 @@ public class RegionWriteTests
 	[Theory]
 	[InlineData(ACadVersion.AC1018)]
 	[InlineData(ACadVersion.AC1024)]
+	[InlineData(ACadVersion.AC1027)]
+	[InlineData(ACadVersion.AC1032)]
 	public void ABinaryPayloadSurvivesADwgRoundTrip(ACadVersion version)
 	{
-		//R2004 and R2010 keep the payload inside the entity. Measured in AutoCAD 2027 on a
-		//production drawing with 32 regions: written at either version the drawing opens, audits to
-		//the same 5 errors it audited to before the change, and AutoCAD's own export of it has all
-		//32 regions back.
+		//R2004 and R2010 keep the payload inside the entity; R2013 and R2018 keep it in the AcDs data
+		//section. Measured in AutoCAD 2027 on a production drawing with 32 regions: written at any of
+		//them the drawing opens, audits to the same 5 errors it audited to before the change, and
+		//AutoCAD's own export of it has all 32 regions back.
 		CadDocument doc = DwgReader.Read(sampleR2004);
 		Region[] before = this.regions(doc);
 		Assert.NotEmpty(before);
@@ -126,12 +128,11 @@ public class RegionWriteTests
 
 	[Theory]
 	[InlineData(ACadVersion.AC1015)]
-	[InlineData(ACadVersion.AC1032)]
 	public void TheVersionsThatCannotCarryThePayloadLeaveTheRegionOutAndSaySo(ACadVersion version)
 	{
-		//R2000 wants SAT text in the entity and refuses every file this writer produced that way;
-		//R2013+ wants the payload in the AcDs data section, which this writer does not produce. A
+		//R2000 wants SAT text in the entity and refuses every file this writer produced that way. A
 		//region without its geometry is a handle with no shape, so it is left out - said, not hidden.
+		//R2013+ used to be on this list too, for want of an AcDs data section; it has one now.
 		CadDocument doc = DwgReader.Read(sampleR2004);
 		Assert.NotEmpty(this.regions(doc));
 
@@ -154,10 +155,11 @@ public class RegionWriteTests
 	[InlineData(ACadVersion.AC1032)]
 	public void ARegionWithNoGeometryIsNotWrittenToADwg(ACadVersion version)
 	{
-		//A region read from an R2013+ DWG has no payload: the geometry is in the AcDs data section,
-		//which the reader does not read. Written as an empty region it is a handle with no shape,
-		//and AutoCAD refuses the whole drawing - `sample_AC1032` round-tripped to R2018 would not
-		//open at all until this case was caught.
+		//Written as an empty region it is a handle with no shape, and AutoCAD refuses the whole
+		//drawing - `sample_AC1032` round-tripped to R2018 would not open at all until this case was
+		//caught. It arose because a region read from an R2013+ DWG used to arrive with no payload at
+		//all; the reader collects it from the AcDs data section now, but a caller can still build one
+		//with no geometry.
 		CadDocument doc = DwgReader.Read(sampleR2004);
 		Region region = this.regions(doc).First();
 		region.AcisData = null;
