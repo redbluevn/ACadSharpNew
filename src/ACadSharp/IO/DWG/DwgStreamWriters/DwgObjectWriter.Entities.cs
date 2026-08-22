@@ -2227,13 +2227,67 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		//Wireframe data present. This follows the payload rather than ending the entity: the reader
 		//here stops at the end-of-ACIS marker and does not care what comes after, but AutoCAD reads
 		//on, and a file that stopped short of this bit was refused before it finished loading.
-		this._writer.WriteBit(false);
+		if (!this.R2013Plus)
+		{
+			//Before R2013 the entity carries its geometry, and a wireframe block on top of it is not
+			//needed: written this way the drawing opens and audits clean.
+			this._writer.WriteBit(false);
+		}
+		else
+		{
+			this.writeWireframeData(geometry);
+		}
 
 		if (this.R2007Plus)
 		{
 			//Unknown BL
 			this._writer.WriteBitLong(0);
 		}
+	}
+
+	/// <summary>
+	/// The wireframe block an R2013+ modeler geometry entity carries after its header.
+	/// </summary>
+	/// <remarks>
+	/// Saying "no wireframe data" here is what made AutoCAD refuse every R2013+ drawing this writer
+	/// produced with a region or a solid in it - and it refused whether or not the AcDs section was
+	/// present, whether or not the payload bit was set, and even when handed a section AutoCAD had
+	/// written itself. Read off one of AutoCAD's own entities bit by bit, the block it expects is a
+	/// point, an isoline count, an empty wire list and an empty silhouette list.
+	/// </remarks>
+	private void writeWireframeData(ModelerGeometry geometry)
+	{
+		//Wireframe data present
+		this._writer.WriteBit(true);
+
+		//Point present, then the point itself
+		this._writer.WriteBit(true);
+		this._writer.Write3BitDouble(geometry.Point);
+
+		//Num IsoLines
+		this._writer.WriteBitLong(geometry.IsoLinesCount);
+
+		//IsoLines present, then the wires. Nothing in the drawings measured carries any, and there is
+		//no writer for one, so a shape that does is written without them rather than with a count
+		//that promises data the file does not hold.
+		this._writer.WriteBit(true);
+		if (geometry.Wires.Any())
+		{
+			this.notify($"{geometry.GetType().Name} {geometry.Handle} carries {geometry.Wires.Count} wireframe wires, which are not written", NotificationType.NotImplemented);
+		}
+
+		this._writer.WriteBitLong(0);
+
+		//Num silhouettes
+		if (geometry.Silhouettes.Any())
+		{
+			this.notify($"{geometry.GetType().Name} {geometry.Handle} carries {geometry.Silhouettes.Count} silhouettes, which are not written", NotificationType.NotImplemented);
+		}
+
+		this._writer.WriteBitLong(0);
+
+		//ACIS empty bit: the geometry is in the AcDs data section, not here.
+		this._writer.WriteBit(true);
 	}
 
 	private void writeModelerGeometryData(ModelerGeometry geometry)
