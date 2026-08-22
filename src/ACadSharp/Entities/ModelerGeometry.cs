@@ -38,7 +38,7 @@ namespace ACadSharp.Entities
 		/// Raw ACIS payload that describes the geometry of this entity.
 		/// </summary>
 		/// <remarks>
-		/// The payload is binary SAB when it starts with the "ACIS BinaryFile" signature
+		/// The payload is binary SAB when it starts with one of the modeler's binary signatures
 		/// (check <see cref="IsBinaryAcisData"/>), plain SAT text bytes otherwise.
 		/// In R2013+ files the modeler geometry is stored apart from the entity
 		/// (ACDSDATA section in DXF, AcDs data section in DWG) and this property is
@@ -55,21 +55,34 @@ namespace ACadSharp.Entities
 		{
 			get
 			{
-				if (this.AcisData == null || this.AcisData.Length < _acisBinarySignature.Length)
+				foreach (byte[] signature in _binarySignatures)
 				{
-					return false;
-				}
-
-				for (int i = 0; i < _acisBinarySignature.Length; i++)
-				{
-					if (this.AcisData[i] != _acisBinarySignature[i])
+					if (startsWith(this.AcisData, signature))
 					{
-						return false;
+						return true;
 					}
 				}
 
-				return true;
+				return false;
 			}
+		}
+
+		private static bool startsWith(byte[] data, byte[] signature)
+		{
+			if (data == null || data.Length < signature.Length)
+			{
+				return false;
+			}
+
+			for (int i = 0; i < signature.Length; i++)
+			{
+				if (data[i] != signature[i])
+				{
+					return false;
+				}
+			}
+
+			return true;
 		}
 
 		/// <summary>
@@ -86,8 +99,16 @@ namespace ACadSharp.Entities
 			return Encoding.ASCII.GetString(this.AcisData);
 		}
 
-		//Signature that marks the start of a binary SAB payload
-		private static readonly byte[] _acisBinarySignature = Encoding.ASCII.GetBytes("ACIS BinaryFile");
+		//The signatures that mark the start of a binary payload. Both modelers appear in real
+		//drawings: a region read from the AcDs data section of an R2018 drawing starts "ASM
+		//BinaryFile", while the same entity embedded in an R2007 drawing starts "ACIS BinaryFile".
+		//Knowing only the first one made every ASM payload look like SAT text, and the writers pick
+		//SAT or SAB from this flag - so a binary payload would have been written out as text.
+		private static readonly byte[][] _binarySignatures =
+		{
+			Encoding.ASCII.GetBytes("ACIS BinaryFile"),
+			Encoding.ASCII.GetBytes("ASM BinaryFile"),
+		};
 
 		/// <inheritdoc/>
 		public override void ApplyTransform(Transform transform)
