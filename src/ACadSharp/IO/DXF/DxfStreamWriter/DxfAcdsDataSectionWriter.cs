@@ -1,4 +1,4 @@
-using ACadSharp.Entities;
+﻿using ACadSharp.Entities;
 using ACadSharp.IO.DXF.DxfStreamWriter;
 using ACadSharp.Tables;
 using System;
@@ -38,22 +38,23 @@ internal class DxfAcdsDataSectionWriter : DxfSectionWriterBase
 	/// The modeler geometry entities of a document that have a payload to write, in handle order.
 	/// </summary>
 	/// <remarks>
-	/// Regions only: a record here names the entity that owns it, and the other modeler geometry
-	/// types are not written to the entities section at all - a record for one of those would point
-	/// at a handle the file does not contain.
+	/// A record here names the entity that owns it, so only entities the entities section actually
+	/// writes may appear: a record pointing at a handle the file does not contain is worse than no
+	/// record. Regions, solids and bodies all reach the entities section now, and all three keep
+	/// their geometry here from R2013 on.
 	/// </remarks>
 	public static IList<ModelerGeometry> CollectEntities(CadDocument document)
 	{
 		var found = new List<ModelerGeometry>();
 		foreach (BlockRecord record in document.BlockRecords)
 		{
-			foreach (Region region in record.Entities.OfType<Region>())
+			foreach (ModelerGeometry geometry in record.Entities.OfType<ModelerGeometry>())
 			{
-				if (region.AcisData != null
-					&& region.AcisData.Length > 0
-					&& region.IsValid(CadFileFormat.DXF, document.Header.Version))
+				if (geometry.AcisData != null
+					&& geometry.AcisData.Length > 0
+					&& geometry.IsValid(CadFileFormat.DXF, document.Header.Version))
 				{
-					found.Add(region);
+					found.Add(geometry);
 				}
 			}
 		}
