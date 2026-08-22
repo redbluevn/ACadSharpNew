@@ -3542,7 +3542,7 @@ namespace ACadSharp.IO.DWG
 				}
 
 				//Num IsoLines BL X
-				int nIsoLines = this._mergedReaders.ReadBitLong();
+				geometry.IsoLinesCount = this._mergedReaders.ReadBitLong();
 				//IsoLines present B X If true, isoline data is present.
 				if (this._mergedReaders.ReadBit())
 				{

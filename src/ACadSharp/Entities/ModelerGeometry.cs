@@ -14,6 +14,15 @@ namespace ACadSharp.Entities
 	{
 		public XYZ Point { get; set; }
 
+		/// <summary>
+		/// Number of isolines the modeler draws this shape with.
+		/// </summary>
+		/// <remarks>
+		/// Read from R2013+ files and written back to them. It was read and thrown away before, and a
+		/// writer that has no value to put here has to invent one.
+		/// </remarks>
+		public int IsoLinesCount { get; set; }
+
 		public List<Silhouette> Silhouettes { get; } = new();
 
 		/// <inheritdoc/>
