@@ -212,17 +212,17 @@ internal abstract partial class DxfSectionWriterBase
 				}
 
 				return false;
-			//A region carries its geometry as an ACIS payload, and where the payload goes depends on
-			//the version: R2013+ files keep it in the ACDSDATA section, older ones inside the entity
-			//as character-swapped SAT text. A binary SAB payload - which is what every region read
-			//from an R2007 or later file carries - has no place inside a pre-R2013 entity, and this
-			//writer cannot turn SAB into SAT. Written as an empty region the entity would be a
-			//handle with no shape, so say what is missing and leave it out.
-			case Region regionEntity when this.Version < ACadVersion.AC1027 && regionEntity.IsBinaryAcisData:
+			//A region is only worth writing with its geometry. Where that geometry goes depends on the
+			//version: an R2013+ file keeps it in the ACDSDATA section, an older one inside the entity
+			//as character-swapped SAT text. A binary payload - which is what every region read from
+			//an R2007 or later file carries - has no place inside a pre-R2013 entity, and this writer
+			//cannot turn it into SAT text. Say what is missing rather than write a handle with no
+			//shape.
+			case Region regionEntity when !this.canWriteRegion(regionEntity):
 				if (notify)
 				{
 					this.notify(
-						$"Region {regionEntity.Handle} carries a binary ACIS payload, which a {this.Version} file has no place for: {ACadVersion.AC1027} is the oldest version that keeps it.",
+						$"Region {regionEntity.Handle} is not written to a {this.Version} file: {this.whyNotWritten(regionEntity)}.",
 						NotificationType.NotImplemented);
 				}
 
@@ -230,6 +230,27 @@ internal abstract partial class DxfSectionWriterBase
 			default:
 				return true;
 		}
+	}
+
+	private bool canWriteRegion(Region region)
+	{
+		if (region.AcisData == null || region.AcisData.Length == 0)
+		{
+			return false;
+		}
+
+		//R2013+ carries any payload in the ACDSDATA section; older versions only text.
+		return this.Version >= ACadVersion.AC1027 || !region.IsBinaryAcisData;
+	}
+
+	private string whyNotWritten(Region region)
+	{
+		if (region.AcisData == null || region.AcisData.Length == 0)
+		{
+			return "it has no geometry to write, and an empty one is a handle with no shape";
+		}
+
+		return $"its geometry is a binary ACIS payload, which that version has no place for - {ACadVersion.AC1027} is the oldest version that keeps it";
 	}
 
 	private void writeArc(Arc arc)
