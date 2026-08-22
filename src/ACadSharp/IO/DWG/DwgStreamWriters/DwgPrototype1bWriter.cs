@@ -348,7 +348,7 @@ namespace ACadSharp.IO.DWG.DwgStreamWriters
 			mark(0);
 			schema(writer, new ulong[] { 0, 1 }, new[]
 			{
-				property(NameAcDbDsId, 10, new byte[] { 3, 0, 0, 0, 0, 0, 0, 0 }, new byte[8]),
+				property(NameAcDbDsId, 10, new byte[8], new byte[] { 3, 0, 0, 0, 0, 0, 0, 0 }),
 				property(NameThumbnailData, 15),
 			});
 			mark(1);
@@ -362,7 +362,7 @@ namespace ACadSharp.IO.DWG.DwgStreamWriters
 			mark(5);
 			schema(writer, new ulong[] { 6, 4 }, new[]
 			{
-				property(NameAcDbDsId, 10, new byte[] { 5, 0, 0, 0, 0, 0, 0, 0 }, new byte[8]),
+				property(NameAcDbDsId, 10, new byte[8], new byte[] { 5, 0, 0, 0, 0, 0, 0, 0 }),
 				property(NameAsmData, 15),
 			});
 		}
