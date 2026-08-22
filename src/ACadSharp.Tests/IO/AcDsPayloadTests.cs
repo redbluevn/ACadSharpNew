@@ -1,4 +1,5 @@
-using ACadSharp.Entities;
+﻿using ACadSharp.Entities;
+using System;
 using CSMath;
 using ACadSharp.IO;
 using System.IO;
@@ -132,6 +133,40 @@ public class AcDsPayloadTests
 			Assert.Empty(entity.Wires);
 			Assert.Empty(entity.Silhouettes);
 		}
+	}
+
+	[Fact]
+	public void AnR2013PlusEntityCarriesTheGuidThatNamesItsGeometry()
+	{
+		//The entity does not end with the wireframe block: 138 bits followed it that nothing in this
+		//library read, so the reader stopped short of the end of every modeler geometry entity in an
+		//R2013+ file. They hold the GUID AutoCAD writes as group 2 of a DXF 3DSOLID, bit-encoded -
+		//a BL, two BS and eight raw bytes - which is why looking for the sixteen GUID bytes in the
+		//stream never found them. The three values below are AutoCAD's own, read out of the DXF it
+		//exports from this sample.
+		CadDocument doc = DwgReader.Read(sampleR2018);
+
+		ModelerGeometry[] geometry = this.modelerGeometry(doc);
+		Assert.Equal(3, geometry.Length);
+		Assert.Equal(new Guid("1a113328-eb6d-d44d-824d-78b33668f9e7"), geometry[0].Guid);
+		Assert.Equal(new Guid("3b0eb882-65ed-5e47-8593-6a36b15e7945"), geometry[1].Guid);
+		Assert.Equal(new Guid("2aff21bf-e73f-d14e-9b2e-7a1e6518d595"), geometry[2].Guid);
+	}
+
+	[Theory]
+	[InlineData("sample_AC1027.dwg")]
+	[InlineData("sample_AC1032.dwg")]
+	public void EveryR2013PlusModelerEntityHasAGuid(string sample)
+	{
+		//AutoCAD gives every one of them its own: two drawings built from the same commands, with
+		//the same geometry down to the byte, come out with different GUIDs. So an empty one here
+		//means the block was not read, not that the drawing has none.
+		CadDocument doc = DwgReader.Read(Path.Combine(TestVariables.SamplesFolder, sample));
+
+		ModelerGeometry[] geometry = this.modelerGeometry(doc);
+		Assert.NotEmpty(geometry);
+		Assert.All(geometry, entity => Assert.NotEqual(Guid.Empty, entity.Guid));
+		Assert.Equal(geometry.Length, geometry.Select(e => e.Guid).Distinct().Count());
 	}
 
 	private ModelerGeometry[] modelerGeometry(CadDocument doc)
