@@ -118,6 +118,7 @@ public class DwgWriter : CadWriterBase<DwgWriterConfiguration>
 		this.writeObjects();
 		this.writeObjFreeSpace();
 		this.writeTemplate();
+		//The AcDs section is built but not written: see writePrototype.
 		//this.writePrototype();
 
 		//Write in the last place to avoid conflicts with versions < AC1018
@@ -176,6 +177,35 @@ public class DwgWriter : CadWriterBase<DwgWriterConfiguration>
 			default:
 				throw new CadNotSupportedException();
 		}
+	}
+
+	/// <summary>
+	/// Builds the AcDs data section, where an R2013+ drawing keeps the geometry of its regions,
+	/// solids and bodies.
+	/// </summary>
+	/// <remarks>
+	/// Not called. The section this produces is read back correctly by the reader that parses
+	/// AutoCAD's own - payloads come out byte for byte, at every length tried - but AutoCAD 2027
+	/// refuses to open a drawing carrying it, and gives no reason. Writing it would turn a drawing
+	/// that opens into one that does not, so the call stays commented out until AutoCAD accepts the
+	/// section. What is still guessed rather than measured is written down in the task queue.
+	/// </remarks>
+	private void writePrototype()
+	{
+		if (this._fileHeader.AcadVersion < ACadVersion.AC1027)
+		{
+			//Older versions carry the payload inside the entity, so there is nothing to put here.
+			return;
+		}
+
+		var payloads = DwgPrototype1bWriter.CollectPayloads(this._document);
+		if (!payloads.Any())
+		{
+			return;
+		}
+
+		DwgPrototype1bWriter writer = new(payloads);
+		this._fileHeaderWriter.AddSection(DwgSectionDefinition.AcDsPrototype, writer.Write(), true);
 	}
 
 	private void writeAppInfo()

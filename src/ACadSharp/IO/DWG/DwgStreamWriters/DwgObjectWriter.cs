@@ -179,9 +179,8 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			//and there is exactly one way to carry that geometry in a DWG this writer can produce: the
 			//binary payload inside the entity, at R2004 to R2010. Every other case was measured
 			//against AutoCAD 2027 and refused:
-			//  R2013+ : the payload belongs in the AcDs data section, which this writer does not
-			//           produce. An entity written there without one makes AutoCAD refuse the whole
-			//           drawing.
+			//  R2013+ : the payload belongs in the AcDs data section. DwgPrototype1bWriter builds one
+			//           that this library reads back perfectly, and AutoCAD still refuses the drawing.
 			//  R2000  : wants SAT text in the entity, in length-prefixed blocks; written that way, in
 			//           one block or one block per line, AutoCAD refuses the drawing as well.
 			//  SAT    : same, at any version - the corpus has none, every region in it is binary.
@@ -220,7 +219,7 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			return "its geometry is SAT text, which this writer does not put back into a DWG";
 		}
 
-		return "that version does not carry the geometry inside the entity";
+		return "that version keeps the geometry in the AcDs data section, which this writer does not produce";
 	}
 
 	private void registerObject(CadObject cadObject)
@@ -1554,6 +1553,8 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		if (this.R2013Plus)
 		{
 			//Has DS binary data B If 1 then this object has associated binary data stored in the data store
+			//Always false while the AcDs section is not written: the bit sends AutoCAD looking for a
+			//payload, and a bit set with no section behind it is worse than no bit at all.
 			this._writer.WriteBit(false);
 		}
 
