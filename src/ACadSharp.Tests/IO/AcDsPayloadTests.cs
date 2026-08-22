@@ -1,4 +1,5 @@
 using ACadSharp.Entities;
+using CSMath;
 using ACadSharp.IO;
 using System.IO;
 using System.Linq;
@@ -111,6 +112,25 @@ public class AcDsPayloadTests
 		{
 			Assert.Equal(before[i].GetType(), after[i].GetType());
 			Assert.Equal(before[i].AcisData, after[i].AcisData);
+		}
+	}
+
+	[Fact]
+	public void TheWireframeBlockOfAnR2013PlusEntityIsRead()
+	{
+		//The isoline count used to be read and thrown away, and the point with it went unnoticed
+		//because nothing wrote either back. Both matter: measured bit by bit against AutoCAD's own
+		//3DSOLID, the block it expects after the entity header is a point, this count, an empty wire
+		//list and an empty silhouette list - and saying "no wireframe data" instead is what makes
+		//AutoCAD refuse an R2013+ drawing carrying a solid.
+		CadDocument doc = DwgReader.Read(sampleR2018);
+
+		foreach (ModelerGeometry entity in this.modelerGeometry(doc))
+		{
+			Assert.NotEqual(XYZ.Zero, entity.Point);
+			Assert.Equal(4, entity.IsoLinesCount);
+			Assert.Empty(entity.Wires);
+			Assert.Empty(entity.Silhouettes);
 		}
 	}
 
