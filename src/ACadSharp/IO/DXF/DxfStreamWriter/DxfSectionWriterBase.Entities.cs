@@ -121,6 +121,9 @@ internal abstract partial class DxfSectionWriterBase
 			case Ray ray:
 				this.writeRay(ray);
 				break;
+			case Region region:
+				this.writeModelerGeometry(region);
+				break;
 			case Shape shape:
 				this.writeShape(shape);
 				break;
@@ -203,10 +206,24 @@ internal abstract partial class DxfSectionWriterBase
 			case ProxyEntity:
 			case Solid3D:
 			case CadBody:
-			case Region:
 				if (notify)
 				{
 					this.notify($"Entity type not implemented {entity.GetType().FullName}", NotificationType.NotImplemented);
+				}
+
+				return false;
+			//A region carries its geometry as an ACIS payload, and where the payload goes depends on
+			//the version: R2013+ files keep it in the ACDSDATA section, older ones inside the entity
+			//as character-swapped SAT text. A binary SAB payload - which is what every region read
+			//from an R2007 or later file carries - has no place inside a pre-R2013 entity, and this
+			//writer cannot turn SAB into SAT. Written as an empty region the entity would be a
+			//handle with no shape, so say what is missing and leave it out.
+			case Region regionEntity when this.Version < ACadVersion.AC1027 && regionEntity.IsBinaryAcisData:
+				if (notify)
+				{
+					this.notify(
+						$"Region {regionEntity.Handle} carries a binary ACIS payload, which a {this.Version} file has no place for: {ACadVersion.AC1027} is the oldest version that keeps it.",
+						NotificationType.NotImplemented);
 				}
 
 				return false;
@@ -1264,6 +1281,45 @@ internal abstract partial class DxfSectionWriterBase
 		this._writer.Write(10, ray.StartPoint, map);
 
 		this._writer.Write(11, ray.Direction, map);
+	}
+
+	private void writeModelerGeometry(ModelerGeometry geometry)
+	{
+		this._writer.Write(DxfCode.Subclass, DxfSubclassMarker.ModelerGeometry);
+
+		if (this.Version >= ACadVersion.AC1027)
+		{
+			//R2013+: the payload lives in the ACDSDATA section, keyed by this entity's handle, and
+			//the entity itself only says that it has one. AutoCAD also writes a group 2 GUID here;
+			//it is not needed - stripped from AutoCAD's own file, all 32 regions of a production
+			//drawing still open, audit 0 and come back with a GUID AutoCAD made up on the way in -
+			//and a drawing read from a DWG has none to write.
+			this._writer.Write(290, 1);
+			return;
+		}
+
+		//Before R2013 the SAT text sits in the entity, character-swapped, 255 characters to a line.
+		this._writer.Write(70, geometry.ModelerFormatVersion == 0 ? (short)1 : geometry.ModelerFormatVersion);
+
+		string text = geometry.GetAcisText();
+		if (string.IsNullOrEmpty(text))
+		{
+			return;
+		}
+
+		foreach (string line in text.Split('\n'))
+		{
+			string encoded = AcisTextCodec.Decode(line.TrimEnd('\r'));
+			for (int i = 0; i < encoded.Length; i += 255)
+			{
+				this._writer.Write(i == 0 ? 1 : 3, encoded.Substring(i, Math.Min(255, encoded.Length - i)));
+			}
+
+			if (encoded.Length == 0)
+			{
+				this._writer.Write(1, string.Empty);
+			}
+		}
 	}
 
 	private void writeSeqend(Seqend seqend)

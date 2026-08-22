@@ -78,11 +78,13 @@ public class HatchAssociativityTests
 		CadDocument doc = new CadDocument();
 		doc.Header.Version = version;
 
-		//A Region is not written by either writer; a Line is. The hatch keeps its own edges either
-		//way, so the only thing that changes is whether the boundary handle can be written.
+		//A Solid3D is not written by either writer; a Line is. The hatch keeps its own edges either
+		//way, so the only thing that changes is whether the boundary handle can be written. This
+		//used to be a Region, which the DXF writer now writes - the boundary has to be something
+		//neither writer keeps or the test measures nothing.
 		Entity boundary = writable
 			? (Entity)new Line(new XYZ(0, 0, 0), new XYZ(1, 0, 0))
-			: new Region();
+			: new Solid3D();
 		doc.Entities.Add(boundary);
 
 		Hatch hatch = new Hatch { IsSolid = true, IsAssociative = true };
