@@ -95,10 +95,7 @@ public class AcDsPayloadTests
 		//from an R2018 drawing. Measured on a production drawing too - written at R2010 it audits to
 		//the same 28 errors it did before, and AutoCAD's own export of our file has the region back.
 		CadDocument doc = DwgReader.Read(sampleR2018);
-		//Only regions, deliberately: Solid3D and CadBody are on the not-implemented list of both
-		//writers, so they are dropped whatever their payload says. Reading the section does not
-		//change that, and this test is about the reading.
-		Region[] before = this.modelerGeometry(doc).OfType<Region>().ToArray();
+		ModelerGeometry[] before = this.modelerGeometry(doc);
 		Assert.NotEmpty(before);
 
 		doc.Header.Version = ACadVersion.AC1024;
@@ -108,10 +105,11 @@ public class AcDsPayloadTests
 			writer.Write();
 		}
 
-		Region[] after = this.modelerGeometry(DwgReader.Read(new MemoryStream(stream.ToArray()))).OfType<Region>().ToArray();
+		ModelerGeometry[] after = this.modelerGeometry(DwgReader.Read(new MemoryStream(stream.ToArray())));
 		Assert.Equal(before.Length, after.Length);
 		for (int i = 0; i < before.Length; i++)
 		{
+			Assert.Equal(before[i].GetType(), after[i].GetType());
 			Assert.Equal(before[i].AcisData, after[i].AcisData);
 		}
 	}

@@ -169,29 +169,27 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			case Wall:
 			case MechanicalEntity:
 			case ProxyEntity:
-			case Solid3D:
-			case CadBody:
 				if (notify)
 				{
 					this.notify($"Entity type not implemented {entity.GetType().FullName}", NotificationType.NotImplemented);
 				}
 
 				return false;
-			//A region is only worth writing with its geometry, and there is exactly one way to carry
-			//that geometry in a DWG this writer can produce: the binary payload inside the entity, at
-			//R2004 to R2010. Every other case was measured against AutoCAD 2027 and refused:
+			//Modeler geometry - a region, a solid or a body - is only worth writing with its geometry,
+			//and there is exactly one way to carry that geometry in a DWG this writer can produce: the
+			//binary payload inside the entity, at R2004 to R2010. Every other case was measured
+			//against AutoCAD 2027 and refused:
 			//  R2013+ : the payload belongs in the AcDs data section, which this writer does not
-			//           produce. A region written there without one - which is what a region read
-			//           from an R2013+ file has, since its payload never reached the reader - makes
-			//           AutoCAD refuse the whole drawing.
+			//           produce. An entity written there without one makes AutoCAD refuse the whole
+			//           drawing.
 			//  R2000  : wants SAT text in the entity, in length-prefixed blocks; written that way, in
 			//           one block or one block per line, AutoCAD refuses the drawing as well.
 			//  SAT    : same, at any version - the corpus has none, every region in it is binary.
-			case Region regionEntity when !this.canWriteRegion(regionEntity):
+			case ModelerGeometry modeler when !this.canWriteModelerGeometry(modeler):
 				if (notify)
 				{
 					this.notify(
-						$"Region {regionEntity.Handle} is not written to a {this._version} file: {this.whyNotWritten(regionEntity)}. {ACadVersion.AC1018} to {ACadVersion.AC1024} keep it.",
+						$"{modeler.GetType().Name} {modeler.Handle} is not written to a {this._version} file: {this.whyNotWritten(modeler)}. {ACadVersion.AC1018} to {ACadVersion.AC1024} keep it.",
 						NotificationType.NotImplemented);
 				}
 
@@ -201,23 +199,23 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		}
 	}
 
-	private bool canWriteRegion(Region region)
+	private bool canWriteModelerGeometry(ModelerGeometry geometry)
 	{
-		return region.AcisData != null
-			&& region.AcisData.Length > 0
-			&& region.IsBinaryAcisData
+		return geometry.AcisData != null
+			&& geometry.AcisData.Length > 0
+			&& geometry.IsBinaryAcisData
 			&& this._version >= ACadVersion.AC1018
 			&& !this.R2013Plus;
 	}
 
-	private string whyNotWritten(Region region)
+	private string whyNotWritten(ModelerGeometry geometry)
 	{
-		if (region.AcisData == null || region.AcisData.Length == 0)
+		if (geometry.AcisData == null || geometry.AcisData.Length == 0)
 		{
 			return "it has no geometry to write, and an empty one is a handle with no shape";
 		}
 
-		if (!region.IsBinaryAcisData)
+		if (!geometry.IsBinaryAcisData)
 		{
 			return "its geometry is SAT text, which this writer does not put back into a DWG";
 		}

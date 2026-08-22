@@ -124,6 +124,12 @@ internal abstract partial class DxfSectionWriterBase
 			case Region region:
 				this.writeModelerGeometry(region);
 				break;
+			case Solid3D solid3d:
+				this.writeModelerGeometry(solid3d);
+				break;
+			case CadBody body:
+				this.writeModelerGeometry(body);
+				break;
 			case Shape shape:
 				this.writeShape(shape);
 				break;
@@ -204,25 +210,23 @@ internal abstract partial class DxfSectionWriterBase
 
 				return true;
 			case ProxyEntity:
-			case Solid3D:
-			case CadBody:
 				if (notify)
 				{
 					this.notify($"Entity type not implemented {entity.GetType().FullName}", NotificationType.NotImplemented);
 				}
 
 				return false;
-			//A region is only worth writing with its geometry. Where that geometry goes depends on the
-			//version: an R2013+ file keeps it in the ACDSDATA section, an older one inside the entity
-			//as character-swapped SAT text. A binary payload - which is what every region read from
-			//an R2007 or later file carries - has no place inside a pre-R2013 entity, and this writer
-			//cannot turn it into SAT text. Say what is missing rather than write a handle with no
-			//shape.
-			case Region regionEntity when !this.canWriteRegion(regionEntity):
+			//Modeler geometry - a region, a solid or a body - is only worth writing with its geometry.
+			//Where that geometry goes depends on the version: an R2013+ file keeps it in the ACDSDATA
+			//section, an older one inside the entity as character-swapped SAT text. A binary payload -
+			//which is what every one of them read from an R2007 or later file carries - has no place
+			//inside a pre-R2013 entity, and this writer cannot turn it into SAT text. Say what is
+			//missing rather than write a handle with no shape.
+			case ModelerGeometry modeler when !this.canWriteModelerGeometry(modeler):
 				if (notify)
 				{
 					this.notify(
-						$"Region {regionEntity.Handle} is not written to a {this.Version} file: {this.whyNotWritten(regionEntity)}.",
+						$"{modeler.GetType().Name} {modeler.Handle} is not written to a {this.Version} file: {this.whyNotWritten(modeler)}.",
 						NotificationType.NotImplemented);
 				}
 
@@ -232,20 +236,20 @@ internal abstract partial class DxfSectionWriterBase
 		}
 	}
 
-	private bool canWriteRegion(Region region)
+	private bool canWriteModelerGeometry(ModelerGeometry geometry)
 	{
-		if (region.AcisData == null || region.AcisData.Length == 0)
+		if (geometry.AcisData == null || geometry.AcisData.Length == 0)
 		{
 			return false;
 		}
 
 		//R2013+ carries any payload in the ACDSDATA section; older versions only text.
-		return this.Version >= ACadVersion.AC1027 || !region.IsBinaryAcisData;
+		return this.Version >= ACadVersion.AC1027 || !geometry.IsBinaryAcisData;
 	}
 
-	private string whyNotWritten(Region region)
+	private string whyNotWritten(ModelerGeometry geometry)
 	{
-		if (region.AcisData == null || region.AcisData.Length == 0)
+		if (geometry.AcisData == null || geometry.AcisData.Length == 0)
 		{
 			return "it has no geometry to write, and an empty one is a handle with no shape";
 		}
@@ -1304,6 +1308,30 @@ internal abstract partial class DxfSectionWriterBase
 		this._writer.Write(11, ray.Direction, map);
 	}
 
+	/// <summary>
+	/// The subclass marker a modeler geometry entity carries on top of <c>AcDbModelerGeometry</c>.
+	/// </summary>
+	/// <remarks>
+	/// A region carries none, and neither does a body: AutoCAD's own export ends both after the
+	/// modeler geometry subclass. A solid adds <c>AcDb3dSolid</c> and a 350 handle to a history
+	/// object, and unlike the group 2 GUID - which a region does without - the 350 is not optional:
+	/// a 3DSOLID written without it makes AutoCAD refuse the entire DXF, not merely the entity.
+	/// </remarks>
+	private void writeModelerGeometrySubclass(ModelerGeometry geometry)
+	{
+		if (geometry is not Solid3D)
+		{
+			return;
+		}
+
+		this._writer.Write(DxfCode.Subclass, DxfSubclassMarker.Solid3D);
+
+		//The history handle. AutoCAD points it at a real history object; nothing in this library
+		//reads one, so a null handle goes here - measured, not assumed: written without this group
+		//at all AutoCAD refuses the whole DXF, and with it the same file opens and audits 0.
+		this._writer.Write(350, 0uL);
+	}
+
 	private void writeModelerGeometry(ModelerGeometry geometry)
 	{
 		this._writer.Write(DxfCode.Subclass, DxfSubclassMarker.ModelerGeometry);
@@ -1316,6 +1344,7 @@ internal abstract partial class DxfSectionWriterBase
 			//drawing still open, audit 0 and come back with a GUID AutoCAD made up on the way in -
 			//and a drawing read from a DWG has none to write.
 			this._writer.Write(290, 1);
+			this.writeModelerGeometrySubclass(geometry);
 			return;
 		}
 

@@ -627,7 +627,10 @@ internal partial class DwgObjectWriter : DwgSectionIO
 				this.writeModelerGeometry(region);
 				break;
 			case Solid3D solid3d:
-				this.writeSolid3D(solid3d);
+				this.writeModelerGeometry(solid3d);
+				break;
+			case CadBody body:
+				this.writeModelerGeometry(body);
 				break;
 			case Spline spline:
 				this.writeSpline(spline);
@@ -2288,10 +2291,6 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		//than a region that says it was left out. isEntitySupported keeps those entities out.
 		this._writer.WriteBitShort(2);
 		this._writer.WriteBytes(geometry.AcisData);
-	}
-
-	private void writeSolid3D(Solid3D solid)
-	{
 	}
 
 	private void writeSpline(Spline spline)
