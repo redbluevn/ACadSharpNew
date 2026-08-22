@@ -11,6 +11,9 @@ using ACadSharp.Exceptions;
 using ACadSharp.IO.DWG;
 using ACadSharp.IO.DWG.DwgStreamReaders;
 using ACadSharp.IO.DWG.FileHeaders;
+using ACadSharp.Entities;
+using ACadSharp.Prototype1b;
+using ACadSharp.Prototype1b.Segments;
 
 namespace ACadSharp.IO;
 
@@ -125,6 +128,10 @@ public class DwgReader : CadReaderBase<DwgReaderConfiguration>
 
 		//Read all the objects in the file
 		this.readObjects();
+
+		//The AcDs section was read before the objects, because that is the order it sits in the file.
+		//Only now is it known which entities were waiting for it.
+		this.attachAcisDsPayloads();
 
 		//Build the document
 		this._builder.BuildDocument();
@@ -531,6 +538,114 @@ public class DwgReader : CadReaderBase<DwgReaderConfiguration>
 		//Optional section, only for testing
 		return;
 #endif
+	}
+
+	/// <summary>
+	/// Hands each R2013+ modeler geometry entity the ACIS payload the AcDs data section holds for it.
+	/// </summary>
+	/// <remarks>
+	/// From R2013 the geometry of a solid, body or region is not stored in the entity: the entity
+	/// carries a flag saying the payload lives in the AcDs data section, keyed by the entity's own
+	/// handle. That section was parsed but never handed to anyone, so every such entity arrived with
+	/// an empty <see cref="ModelerGeometry.AcisData"/> - a shape with no geometry, and nothing to
+	/// write back.
+	/// </remarks>
+	private void attachAcisDsPayloads()
+	{
+		if (!this._builder.AcisDsEntities.Any())
+		{
+			return;
+		}
+
+		if (this._document.DataStorage == null)
+		{
+			this.triggerNotification($"{this._builder.AcisDsEntities.Count} entities say their ACIS payload is in the AcDs data section, but the file has no such section", NotificationType.Warning);
+			return;
+		}
+
+		Dictionary<ulong, DataEntry> byHandle = new();
+		foreach (DataEntry entry in this._document.DataStorage.GetSchemaData(Schema.ACIS))
+		{
+			byHandle[entry.Header.Handle] = entry;
+		}
+
+		foreach (ModelerGeometry geometry in this._builder.AcisDsEntities)
+		{
+			if (!byHandle.TryGetValue(geometry.Handle, out DataEntry entry))
+			{
+				this.triggerNotification($"{geometry.GetType().Name} {geometry.Handle:X} says its ACIS payload is in the AcDs data section, which holds no entry for it", NotificationType.Warning);
+				continue;
+			}
+
+			byte[] payload = this.acisPayload(entry);
+			if (payload == null || payload.Length == 0)
+			{
+				this.triggerNotification($"{geometry.GetType().Name} {geometry.Handle:X} has an AcDs entry that carries no bytes", NotificationType.Warning);
+				continue;
+			}
+
+			geometry.AcisData = payload;
+		}
+	}
+
+	/// <summary>
+	/// The bytes of one AcDs data entry, which are either stored in the entry itself or spread over
+	/// blob segments when the payload is too large to sit inline.
+	/// </summary>
+	private byte[] acisPayload(DataEntry entry)
+	{
+		if (entry.Value == null)
+		{
+			return null;
+		}
+
+		if (entry.Value.BlobReference == null)
+		{
+			return entry.Value.Data;
+		}
+
+		//A payload over 0x40000 bytes is split into pages, each page a blob segment of its own. The
+		//reference names the segments; the blobs carry the order.
+		DataBlobReference reference = entry.Value.BlobReference;
+		Dictionary<uint, Blob01> blobs = new();
+		foreach (Blob01 blob in this._document.DataStorage.Blobs)
+		{
+			blobs[blob.Header.SegmentIndex] = blob;
+		}
+
+		List<Blob01> pages = new();
+		foreach ((uint segmentIndex, uint _) in reference.SegmentPointers)
+		{
+			if (!blobs.TryGetValue(segmentIndex, out Blob01 blob))
+			{
+				this.triggerNotification($"An AcDs payload names blob segment {segmentIndex}, which is not in the file; the payload is left out rather than handed over half read", NotificationType.Warning);
+				return null;
+			}
+
+			pages.Add(blob);
+		}
+
+		byte[] payload = new byte[reference.TotalDataSize];
+		int written = 0;
+		foreach (Blob01 page in pages.OrderBy(b => b.PageIndex))
+		{
+			if (page.Data == null)
+			{
+				continue;
+			}
+
+			int take = Math.Min(page.Data.Length, payload.Length - written);
+			Array.Copy(page.Data, 0, payload, written, take);
+			written += take;
+		}
+
+		if (written != payload.Length)
+		{
+			this.triggerNotification($"An AcDs payload declares {payload.Length} bytes but its blobs hold {written}; the payload is left out", NotificationType.Warning);
+			return null;
+		}
+
+		return payload;
 	}
 
 	private void readDsPrototype_1b()
