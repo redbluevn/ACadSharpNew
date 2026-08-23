@@ -6,6 +6,7 @@ using CSUtilities.IO;
 using CSUtilities.Text;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace ACadSharp.IO;
 
@@ -117,7 +118,7 @@ public class DwgWriter : CadWriterBase<DwgWriterConfiguration>
 		this.writeObjects();
 		this.writeObjFreeSpace();
 		this.writeTemplate();
-		//this.writePrototype();
+		this.writePrototype();
 
 		//Write in the last place to avoid conflicts with versions < AC1018
 		this.writeHandles();
@@ -166,6 +167,36 @@ public class DwgWriter : CadWriterBase<DwgWriterConfiguration>
 			default:
 				throw new CadNotSupportedException();
 		}
+	}
+
+	/// <summary>
+	/// Writes the AcDs data section: the store an R2013+ drawing keeps the ACIS geometry of its
+	/// regions, solids and bodies in.
+	/// </summary>
+	/// <remarks>
+	/// Only R2013 and later keep geometry here; earlier versions carry it inside the entity, so a
+	/// store there would have nothing to say. The entities that get a record are exactly the ones
+	/// whose has-DS bit is set - see <see cref="DwgPrototype1bWriter.KeepsGeometryInDataStore"/>.
+	/// Measured in AutoCAD 2027: every drawing measured, from one box to a production sample with
+	/// two solids and a region, opens and audits 0 with nothing erased, and AutoCAD's own DXF export
+	/// of the file counts the same entities and ASM_Data records as its export of the source.
+	/// </remarks>
+	private void writePrototype()
+	{
+		if (this._fileHeader.AcadVersion < ACadVersion.AC1027)
+		{
+			//Older versions carry the payload inside the entity, so there is nothing to put here.
+			return;
+		}
+
+		var payloads = DwgPrototype1bWriter.CollectPayloads(this._document, this._fileHeader.AcadVersion);
+		if (!payloads.Any())
+		{
+			return;
+		}
+
+		DwgPrototype1bWriter writer = new(payloads);
+		this._fileHeaderWriter.AddSection(DwgSectionDefinition.AcDsPrototype, writer.Write(), true);
 	}
 
 	private void writeAppInfo()

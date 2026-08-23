@@ -557,9 +557,11 @@ public class DwgReader : CadReaderBase<DwgReaderConfiguration>
 			return;
 		}
 
-		if (this._document.DataStorage == null)
+		//A store whose read failed part way through comes back with its collections unset rather than
+		//empty, so this asks for a usable store, not merely a non-null one.
+		if (this._document.DataStorage?.SchemaFields == null || this._document.DataStorage.DataFields == null)
 		{
-			this.triggerNotification($"{this._builder.AcisDsEntities.Count} entities say their ACIS payload is in the AcDs data section, but the file has no such section", NotificationType.Warning);
+			this.triggerNotification($"{this._builder.AcisDsEntities.Count} entities say their ACIS payload is in the AcDs data section, but the file has no readable section", NotificationType.Warning);
 			return;
 		}
 

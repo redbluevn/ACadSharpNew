@@ -45,6 +45,7 @@ namespace ACadSharp.Prototype1b
 
         public Schema GetSchemaByName(string name)
         {
+            if (this.SchemaFields == null) return null;
             foreach (SchemaData data in this.SchemaFields) {
                 foreach (Schema schema in data.Values) {
                     if (schema.Name == name) {
