@@ -100,9 +100,28 @@ public class DwgLegacyTableTests
 	[Fact]
 	public void TheRestOfTheDrawingSurvivesTheTablesBeingLeftOut()
 	{
-		//Leaving the table out has to cost the table and nothing else.
-		CadDocument doc = DwgReader.Read(sampleR2004);
-		int before = doc.BlockRecords.SelectMany(b => b.Entities).Count(e => !(e is TableEntity));
+		//Leaving the table out has to cost the table and nothing else. Counting against the document
+		//that was read would measure every other gap this writer has as well, so the control is the
+		//same drawing with the tables taken out by hand: whatever else the writer keeps or drops,
+		//the two runs have to agree.
+		int withGuard = this.nonTableCountAfterRoundTrip(DwgReader.Read(sampleR2004), false);
+		int control = this.nonTableCountAfterRoundTrip(DwgReader.Read(sampleR2004), true);
+
+		Assert.Equal(control, withGuard);
+	}
+
+	private int nonTableCountAfterRoundTrip(CadDocument doc, bool removeTablesFirst)
+	{
+		if (removeTablesFirst)
+		{
+			foreach (var record in doc.BlockRecords)
+			{
+				foreach (TableEntity table in record.Entities.OfType<TableEntity>().ToList())
+				{
+					record.Entities.Remove(table);
+				}
+			}
+		}
 
 		doc.Header.Version = ACadVersion.AC1032;
 		using MemoryStream stream = new();
@@ -111,10 +130,9 @@ public class DwgLegacyTableTests
 			writer.Write();
 		}
 
-		CadDocument back = DwgReader.Read(new MemoryStream(stream.ToArray()));
-		int after = back.BlockRecords.SelectMany(b => b.Entities).Count(e => !(e is TableEntity));
-
-		Assert.Equal(before, after);
+		return DwgReader.Read(new MemoryStream(stream.ToArray()))
+			.BlockRecords.SelectMany(b => b.Entities)
+			.Count(e => !(e is TableEntity));
 	}
 
 	private TableEntity[] tables(CadDocument doc)
