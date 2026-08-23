@@ -174,8 +174,10 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			//minutes at R2018). Measured on sample_AC1018: with these two tables left out the same
 			//write opens and audits 0 in two seconds. ValueFlag is the marker for it - the older layout
 			//carries the field and the R2010 one does not, so the reader sets it on that path alone and
-			//no writer here ever writes it back.
-			case TableEntity legacyTable when legacyTable.ValueFlag != 0:
+			//The marker is provenance recorded by the reader, not a property of the table. Inferring
+			//it from ValueFlag being non-zero was wrong: that flag is public and documented, and
+			//normally carries 0x06, so a caller building a table faithfully lost it without a word.
+			case TableEntity legacyTable when legacyTable.ContentIsPreR2010Layout:
 				if (notify)
 				{
 					this.notify(

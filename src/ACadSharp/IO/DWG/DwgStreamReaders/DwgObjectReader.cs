@@ -1,4 +1,4 @@
-﻿using ACadSharp.Blocks;
+using ACadSharp.Blocks;
 using ACadSharp.Classes;
 using ACadSharp.Entities;
 using ACadSharp.Entities.AecObjects;
@@ -3740,8 +3740,19 @@ namespace ACadSharp.IO.DWG
 
 					if (payload.Length >= remainingBytes)
 					{
-						//No end marker: the read swallowed the wireframe block and the handles with
-						//the payload, and there is no way back to where the payload really ended.
+						//No end marker anywhere in what was read. The payload therefore also holds the
+						//wireframe block, the handles and the padding, and there is no way back to
+						//where the geometry really ended, so nothing after it can be read.
+						//
+						//The bytes are kept rather than discarded: the real payload is a prefix of
+						//them, and a modeler that finds its own end ignores the tail, whereas
+						//dropping them would leave a shape with no geometry - which this writer then
+						//refuses to write at all. Keeping too much loses nothing; keeping nothing
+						//loses the entity. It is reported because it should not happen: no drawing in
+						//the upstream samples or in seventeen production drawings reaches this line.
+						this.notify(
+							$"{template.CadObject.ObjectName} {template.CadObject.Handle:X}: the ACIS payload carries no end marker, so its length is a guess and anything stored after it in the entity is lost",
+							NotificationType.Warning);
 						return false;
 					}
 
