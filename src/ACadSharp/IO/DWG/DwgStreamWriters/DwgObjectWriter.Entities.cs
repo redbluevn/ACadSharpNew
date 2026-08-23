@@ -2474,6 +2474,8 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		//Degree BL degree of this spline
 		this._writer.WriteBitLong(spline.Degree);
 
+		spline.AssertWeightsAreWritable();
+
 		bool flag = spline.Weights.Count > 0;
 		switch (scenario)
 		{

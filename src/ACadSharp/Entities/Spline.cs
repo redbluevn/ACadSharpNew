@@ -191,6 +191,30 @@ public class Spline : Entity, IOrientable
 
 	public const short MaxDegree = 10;
 
+	/// <summary>
+	/// Checks that the weights, if there are any, can be written: the file formats carry one weight
+	/// per control point and have no way to spell a partial list.
+	/// </summary>
+	/// <exception cref="InvalidOperationException">
+	/// The list is neither empty nor the same length as <see cref="ControlPoints"/>.
+	/// </exception>
+	/// <remarks>
+	/// Called by both writers because both got this wrong in their own way: DWG indexes
+	/// <see cref="Weights"/> by control point and threw an index exception naming nothing, halfway
+	/// through a file; DXF writes the weights as their own run of 41s and produced a spline with
+	/// fewer weights than control points, which is a malformed spline written without complaint.
+	/// Padding the list would invent geometry and dropping it would silently change a rational curve
+	/// into a different one, so this reports instead of guessing.
+	/// </remarks>
+	internal void AssertWeightsAreWritable()
+	{
+		if (this.Weights.Count != 0 && this.Weights.Count != this.ControlPoints.Count)
+		{
+			throw new InvalidOperationException(
+				$"Spline {this.Handle:X}: {this.Weights.Count} weights for {this.ControlPoints.Count} control points. A spline carries either a weight for every control point or none at all; clear Weights to write it as non-rational.");
+		}
+	}
+
 	private SplineFlags _flags;
 
 	private SplineFlags1 _flags1;

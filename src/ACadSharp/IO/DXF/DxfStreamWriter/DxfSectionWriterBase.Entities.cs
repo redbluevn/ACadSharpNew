@@ -1455,6 +1455,8 @@ internal abstract partial class DxfSectionWriterBase
 			this._writer.Write(13, spline.EndTangent, map);
 		}
 
+		spline.AssertWeightsAreWritable();
+
 		foreach (double knot in spline.Knots)
 		{
 			this._writer.Write(40, knot, map);
