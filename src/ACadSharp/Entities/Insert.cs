@@ -36,6 +36,55 @@ public class Insert : Entity, IOrientable
 	public BlockRecord Block { get; internal set; }
 
 	/// <summary>
+	/// The dynamic block definition this reference was evaluated from, or null when this is not a
+	/// reference to a dynamic block.
+	/// </summary>
+	/// <remarks>
+	/// <see cref="Block"/> is not the answer to "which dynamic block is this?". A reference to a
+	/// dynamic block points at the <i>anonymous evaluated</i> block AutoCAD generates for it -
+	/// <c>*U6</c> and the like - and that block carries no evaluation graph of its own, so
+	/// <see cref="BlockRecord.IsDynamic"/> is false for it. The definition is recorded on the
+	/// reference instead: an <c>AcDbBlockRepresentation</c> entry in this entity's extension
+	/// dictionary holds a dictionary, and in it a <see cref="BlockRepresentationData"/> naming the
+	/// block the geometry was evaluated from.
+	/// </remarks>
+	public BlockRecord DynamicBlockDefinition
+	{
+		get
+		{
+			if (this.XDictionary == null
+				|| !this.XDictionary.TryGetEntry(DynamicBlockRepresentationKey, out CadDictionary representation))
+			{
+				return null;
+			}
+
+			foreach (NonGraphicalObject entry in representation)
+			{
+				if (entry is BlockRepresentationData data && data.Block != null)
+				{
+					return data.Block;
+				}
+			}
+
+			return null;
+		}
+	}
+
+	/// <summary>
+	/// Whether this reference is a reference to a dynamic block.
+	/// </summary>
+	/// <remarks>
+	/// Reads the same link as <see cref="DynamicBlockDefinition"/>; see the remarks there for why
+	/// <see cref="BlockRecord.IsDynamic"/> on <see cref="Block"/> answers a different question.
+	/// </remarks>
+	public bool IsDynamicBlockReference { get { return this.DynamicBlockDefinition != null; } }
+
+	/// <summary>
+	/// Extension dictionary key under which a reference records the dynamic block it came from.
+	/// </summary>
+	public const string DynamicBlockRepresentationKey = "AcDbBlockRepresentation";
+
+	/// <summary>
 	/// Column count
 	/// </summary>
 	[DxfCodeValue(DxfReferenceType.Optional, 70)]
