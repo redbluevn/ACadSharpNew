@@ -2243,6 +2243,46 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			//Unknown BL
 			this._writer.WriteBitLong(0);
 		}
+
+		if (this.R2013Plus)
+		{
+			this.writeModelerGuid(geometry);
+
+			if (geometry is Solid3D)
+			{
+				//History object, hard owner - the same handle a DXF 3DSOLID carries as group 350.
+				//AutoCAD owns an ACSH_HISTORY_CLASS object here; this library does not model one,
+				//and a null handle is what its DXF writer puts there.
+				this._writer.HandleReference(DwgReferenceType.HardOwnership, 0);
+			}
+		}
+	}
+
+	/// <summary>
+	/// The GUID an R2013+ modeler geometry entity closes with.
+	/// </summary>
+	/// <remarks>
+	/// It is the same value a DXF 3DSOLID carries as group 2, and AutoCAD gives every entity its
+	/// own: two drawings built from the same commands, with the same geometry down to the byte,
+	/// get different GUIDs. So an entity that has none - one this library built rather than read -
+	/// is given a fresh one rather than a zero.
+	/// </remarks>
+	private void writeModelerGuid(ModelerGeometry geometry)
+	{
+		Guid guid = geometry.Guid == Guid.Empty ? Guid.NewGuid() : geometry.Guid;
+		byte[] bytes = guid.ToByteArray();
+
+		//GUID present B
+		this._writer.WriteBit(true);
+
+		//Data1 BL, Data2 BS, Data3 BS, Data4 RC x 8
+		this._writer.WriteBitLong(BitConverter.ToInt32(bytes, 0));
+		this._writer.WriteBitShort(BitConverter.ToInt16(bytes, 4));
+		this._writer.WriteBitShort(BitConverter.ToInt16(bytes, 6));
+		this._writer.WriteBytes(bytes, 8, 8);
+
+		//Unknown BL
+		this._writer.WriteBitLong(0);
 	}
 
 	/// <summary>

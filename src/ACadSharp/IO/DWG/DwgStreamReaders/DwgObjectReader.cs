@@ -3607,7 +3607,39 @@ namespace ACadSharp.IO.DWG
 				this._mergedReaders.ReadBitLong();
 			}
 
+			//R2013+: the entity closes with the GUID that names its geometry in the AcDs data
+			//section. It was read as nothing at all before, which left 138 bits of every such
+			//entity unaccounted for.
+			if (this.R2013Plus)
+			{
+				this.readModelerGuid(geometry);
+			}
+
 			return template;
+		}
+
+		/// <summary>
+		/// Reads the GUID an R2013+ modeler geometry entity carries after its wireframe block.
+		/// </summary>
+		/// <remarks>
+		/// The same value AutoCAD writes as group 2 of a DXF 3DSOLID, stored here as a bit-encoded
+		/// long, two bit-encoded shorts and eight raw bytes - which is why looking for the sixteen
+		/// GUID bytes in the stream never found them.
+		/// </remarks>
+		private void readModelerGuid(ModelerGeometry geometry)
+		{
+			//GUID present B
+			if (this._mergedReaders.ReadBit())
+			{
+				//Data1 BL, Data2 BS, Data3 BS, Data4 RC x 8
+				int data1 = this._mergedReaders.ReadBitLong();
+				short data2 = this._mergedReaders.ReadBitShort();
+				short data3 = this._mergedReaders.ReadBitShort();
+				geometry.Guid = new Guid(data1, data2, data3, this._mergedReaders.ReadBytes(8));
+			}
+
+			//Unknown BL
+			this._mergedReaders.ReadBitLong();
 		}
 
 		private void readModelerGeometryData<T>(CadEntityTemplate<T> template)
