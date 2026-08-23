@@ -1,4 +1,4 @@
-﻿using ACadSharp.Attributes;
+using ACadSharp.Attributes;
 using ACadSharp.Extensions;
 using ACadSharp.IO;
 using ACadSharp.Objects;
@@ -52,21 +52,25 @@ public class Insert : Entity, IOrientable
 	{
 		get
 		{
-			if (this.XDictionary == null
-				|| !this.XDictionary.TryGetEntry(DynamicBlockRepresentationKey, out CadDictionary representation))
+			//An instance that has been evaluated away from its defaults points at an anonymous block
+			//and records the definition it came from here.
+			if (this.XDictionary != null
+				&& this.XDictionary.TryGetEntry(DynamicBlockRepresentationKey, out CadDictionary representation))
 			{
-				return null;
-			}
-
-			foreach (NonGraphicalObject entry in representation)
-			{
-				if (entry is BlockRepresentationData data && data.Block != null)
+				foreach (NonGraphicalObject entry in representation)
 				{
-					return data.Block;
+					if (entry is BlockRepresentationData data && data.Block != null)
+					{
+						return data.Block;
+					}
 				}
 			}
 
-			return null;
+			//An instance still at its default values needs no evaluated block and has no such record:
+			//it references the dynamic block itself. Both are references to a dynamic block, and a
+			//caller asking which one this is must get an answer for either. Six of the ten
+			//dynamic-block samples contain one of these alongside the evaluated ones.
+			return this.Block?.EvaluationGraph != null ? this.Block : null;
 		}
 	}
 

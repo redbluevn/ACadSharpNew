@@ -202,6 +202,42 @@ public class DynamicBlockReferenceTests
 		return null;
 	}
 
+	[Theory]
+	[InlineData("BLOCKPOLARPARAMETER.dxf", "BLOCK_POLAR_PARAMETER")]
+	[InlineData("BLOCKLINEARPARAMETER.dwg", "LINEAR_PARAM")]
+	[InlineData("BLOCKROTATIONPARAMETER.dxf", "dynamic_block")]
+	public void AnInstanceStillAtItsDefaultsIsAlsoADynamicBlockReference(string sample, string definition)
+	{
+		//The case the first version of this API got wrong. An instance not evaluated away from its
+		//default values needs no anonymous block and carries no representation record: it references
+		//the dynamic block itself. It is every bit a dynamic block reference, and six of the ten
+		//samples contain one, so a caller filtering on IsDynamicBlockReference silently skipped them.
+		CadDocument doc = sample.EndsWith(".dxf")
+			? DxfReader.Read(Path.Combine(samples, sample))
+			: DwgReader.Read(Path.Combine(samples, sample));
+
+		Insert direct = this.inserts(doc).Single(i => i.Block.Name == definition);
+
+		Assert.True(direct.IsDynamicBlockReference);
+		Assert.Equal(definition, direct.DynamicBlockDefinition.Name);
+		Assert.Same(direct.Block, direct.DynamicBlockDefinition);
+	}
+
+	[Fact]
+	public void BothKindsOfInstanceResolveToTheSameDefinition()
+	{
+		//The two shapes side by side in one drawing: one still at defaults pointing straight at the
+		//definition, one evaluated pointing at an anonymous block. Both name the same dynamic block.
+		CadDocument doc = DxfReader.Read(Path.Combine(samples, "BLOCKPOLARPARAMETER.dxf"));
+
+		Insert[] all = this.inserts(doc).Where(i => i.IsDynamicBlockReference).ToArray();
+
+		Assert.Equal(2, all.Length);
+		Assert.Contains(all, i => !i.Block.Name.StartsWith("*U"));
+		Assert.Contains(all, i => i.Block.Name.StartsWith("*U"));
+		Assert.All(all, i => Assert.Equal("BLOCK_POLAR_PARAMETER", i.DynamicBlockDefinition.Name));
+	}
+
 	private Insert[] inserts(CadDocument doc)
 	{
 		return doc.BlockRecords.SelectMany(b => b.Entities.OfType<Insert>()).ToArray();
