@@ -167,6 +167,23 @@ internal partial class DwgObjectWriter : DwgSectionIO
 				}
 
 				return false;
+			//The other half of that same limit, and the one that cost a whole drawing rather than one
+			//entity. The reader does read the older layout - that part works - but what it produces is
+			//not what the R2010 layout needs, and writing it anyway makes AutoCAD reject the file
+			//(ErrorStatus 53 at R2010) or work on it for as long as it is given (still going after ten
+			//minutes at R2018). Measured on sample_AC1018: with these two tables left out the same
+			//write opens and audits 0 in two seconds. ValueFlag is the marker for it - the older layout
+			//carries the field and the R2010 one does not, so the reader sets it on that path alone and
+			//no writer here ever writes it back.
+			case TableEntity legacyTable when legacyTable.ValueFlag != 0:
+				if (notify)
+				{
+					this.notify(
+						$"{entity.GetType().Name} {entity.Handle} is not written to a {this._version} file: its content was read from the pre-{ACadVersion.AC1024} layout, which this writer cannot re-express as the {ACadVersion.AC1024} one. Written as it is, AutoCAD refuses the whole drawing.",
+						NotificationType.NotImplemented);
+				}
+
+				return false;
 			case Wall:
 			case MechanicalEntity:
 			case ProxyEntity:
