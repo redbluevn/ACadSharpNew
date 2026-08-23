@@ -1,5 +1,7 @@
 using ACadSharp.Entities;
 using ACadSharp.IO;
+using ACadSharp.Objects;
+using ACadSharp.Objects.Evaluations;
 using ACadSharp.Tables;
 using System.IO;
 using System.Linq;
@@ -111,6 +113,93 @@ public class DynamicBlockReferenceTests
 
 		CadDocument back = DwgReader.Read(new MemoryStream(stream.ToArray()));
 		Assert.DoesNotContain(this.inserts(back), i => i.IsDynamicBlockReference);
+	}
+
+	[Fact]
+	public void TheActiveVisibilityStateOfEachInstanceIsReadable()
+	{
+		//The question an app asks most often about a dynamic block. The state name is group code 1 of
+		//the record belonging to the visibility parameter's node, keyed by that node's Id - not its
+		//Index, which also resolves and gives a different node.
+		CadDocument doc = DwgReader.Read(Path.Combine(samples, "BLOCKVISIBILITYPARAMETER.dwg"));
+
+		string[] active = this.inserts(doc)
+			.Where(i => i.IsDynamicBlockReference)
+			.Select(this.activeVisibilityState)
+			.Where(s => s != null)
+			.OrderBy(s => s)
+			.ToArray();
+
+		Assert.Equal(new[] { "HideAll", "ShowAll", "VisibilityState0", "VisibilityState1" }, active);
+	}
+
+	[Fact]
+	public void EveryActiveStateIsOneTheDefinitionDeclares()
+	{
+		CadDocument doc = DwgReader.Read(Path.Combine(samples, "BLOCKVISIBILITYPARAMETER.dwg"));
+
+		foreach (Insert insert in this.inserts(doc).Where(i => i.IsDynamicBlockReference))
+		{
+			string state = this.activeVisibilityState(insert);
+			BlockVisibilityParameter parameter = (BlockVisibilityParameter)insert.DynamicBlockDefinition
+				.EvaluationGraph.Nodes.First(n => n.Expression is BlockVisibilityParameter).Expression;
+
+			Assert.Contains(state, parameter.States.Keys);
+		}
+	}
+
+	[Fact]
+	public void TheActiveVisibilityStateSurvivesBothRoundTrips()
+	{
+		CadDocument doc = DwgReader.Read(Path.Combine(samples, "BLOCKVISIBILITYPARAMETER.dwg"));
+		string[] before = this.activeStates(doc);
+		Assert.Equal(4, before.Length);
+
+		Assert.Equal(before, this.activeStates(this.roundTripDwg(DwgReader.Read(Path.Combine(samples, "BLOCKVISIBILITYPARAMETER.dwg")))));
+		Assert.Equal(before, this.activeStates(this.roundTripDxf(DwgReader.Read(Path.Combine(samples, "BLOCKVISIBILITYPARAMETER.dwg")))));
+	}
+
+	private string[] activeStates(CadDocument doc)
+	{
+		return this.inserts(doc)
+			.Where(i => i.IsDynamicBlockReference)
+			.Select(this.activeVisibilityState)
+			.Where(s => s != null)
+			.OrderBy(s => s)
+			.ToArray();
+	}
+
+	private string activeVisibilityState(Insert insert)
+	{
+		EvaluationGraph.Node node = insert.DynamicBlockDefinition?.EvaluationGraph?.Nodes
+			.FirstOrDefault(n => n.Expression is BlockVisibilityParameter);
+		if (node == null || insert.XDictionary == null)
+		{
+			return null;
+		}
+
+		foreach (NonGraphicalObject entry in insert.XDictionary)
+		{
+			if (entry is not CadDictionary representation) continue;
+			foreach (NonGraphicalObject cacheEntry in representation)
+			{
+				if (cacheEntry is not CadDictionary cache) continue;
+				foreach (NonGraphicalObject dataEntry in cache)
+				{
+					if (dataEntry is not CadDictionary data || dataEntry.Name != "ACAD_ENHANCEDBLOCKDATA") continue;
+					foreach (NonGraphicalObject stateRecord in data)
+					{
+						if (stateRecord.Name != node.Id.ToString() || stateRecord is not XRecord record) continue;
+						foreach (XRecord.Entry value in record.Entries)
+						{
+							if (value.Code == 1) return value.Value?.ToString();
+						}
+					}
+				}
+			}
+		}
+
+		return null;
 	}
 
 	private Insert[] inserts(CadDocument doc)
