@@ -1,6 +1,8 @@
 using ACadSharp.Entities;
 using ACadSharp.IO;
+using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Linq;
 using Xunit;
 
@@ -191,4 +193,62 @@ public class DwgSatPayloadTests
 			.OrderBy(g => g.Handle)
 			.ToArray();
 	}
+	[Theory]
+	[InlineData(ACadVersion.AC1018)]
+	[InlineData(ACadVersion.AC1024)]
+	public void APayloadWithNoEndMarkerIsReportedRatherThanWrittenInSilence(ACadVersion version)
+	{
+		//In the versions that embed the geometry in the entity the payload has no length: the marker
+		//inside it is the only boundary. Written without one, reading the file back appends the
+		//entity fields that follow to the geometry and loses them - four bytes at R2004, five at
+		//R2010. The writer cannot fix that (a marker it invented would be geometry it invented) but
+		//it does not have to be quiet about it.
+		CadDocument doc = new CadDocument();
+		Solid3D solid = new Solid3D();
+		solid.AcisData = Encoding.ASCII.GetBytes("ACIS BinaryFile")
+			.Concat(Enumerable.Repeat((byte)0x41, 400)).ToArray();
+		doc.Entities.Add(solid);
+		doc.Header.Version = version;
+
+		List<string> warnings = new();
+		using MemoryStream stream = new();
+		using (DwgWriter writer = new(stream, doc))
+		{
+			writer.OnNotification += (_, e) =>
+			{
+				if (e.NotificationType == NotificationType.Warning) warnings.Add(e.Message);
+			};
+			writer.Write();
+		}
+
+		Assert.Contains(warnings, w => w.Contains("no end marker"));
+	}
+
+	[Theory]
+	[InlineData(ACadVersion.AC1018)]
+	[InlineData(ACadVersion.AC1024)]
+	public void AWellFormedPayloadIsWrittenWithoutComplaint(ACadVersion version)
+	{
+		CadDocument doc = new CadDocument();
+		Solid3D solid = new Solid3D();
+		solid.AcisData = Encoding.ASCII.GetBytes("ACIS BinaryFile")
+			.Concat(Enumerable.Repeat((byte)0x41, 200))
+			.Concat(Encoding.ASCII.GetBytes("End-of-ACIS-data")).ToArray();
+		doc.Entities.Add(solid);
+		doc.Header.Version = version;
+
+		List<string> warnings = new();
+		using MemoryStream stream = new();
+		using (DwgWriter writer = new(stream, doc))
+		{
+			writer.OnNotification += (_, e) =>
+			{
+				if (e.NotificationType == NotificationType.Warning) warnings.Add(e.Message);
+			};
+			writer.Write();
+		}
+
+		Assert.DoesNotContain(warnings, w => w.Contains("no end marker"));
+	}
+
 }

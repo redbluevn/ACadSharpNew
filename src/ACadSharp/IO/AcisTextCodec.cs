@@ -70,6 +70,32 @@ namespace ACadSharp.IO
 		/// compound entity name split in tagged chunks. The payload is returned
 		/// unchanged when no marker is found.
 		/// </remarks>
+		/// <summary>
+		/// Whether a payload carries an end-of-data marker.
+		/// </summary>
+		/// <remarks>
+		/// Worth asking before writing a payload the reader has no length for: in the versions that
+		/// embed the geometry in the entity, the marker is the only thing separating it from the
+		/// fields that follow.
+		/// </remarks>
+		public static bool HasAcisEnd(byte[] data)
+		{
+			if (data == null || data.Length == 0)
+			{
+				return false;
+			}
+
+			foreach (byte[] marker in _endMarkers)
+			{
+				if (indexOf(data, marker, 0) >= 0)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
 		public static byte[] TrimAtAcisEnd(byte[] data)
 		{
 			if (data == null || data.Length == 0)

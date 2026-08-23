@@ -2382,6 +2382,18 @@ internal partial class DwgObjectWriter : DwgSectionIO
 	{
 		bool sat = !geometry.IsBinaryAcisData;
 
+		//The embedded form gives the payload no length: the reader finds its end by the marker
+		//inside it. A payload without one is therefore not separable from the fields written after
+		//it, and reading this file back appends those bytes to the geometry and loses them from the
+		//entity - measured at 4 bytes for R2004 and 5 for R2010. Nothing can be done about it here
+		//(inventing a marker would be inventing geometry), but it should not pass in silence.
+		if (!sat && !AcisTextCodec.HasAcisEnd(geometry.AcisData))
+		{
+			this.notify(
+				$"{geometry.ObjectName} {geometry.Handle:X}: the ACIS payload carries no end marker, so the reader cannot tell where it stops and the entity data after it begins",
+				NotificationType.Warning);
+		}
+
 		//Unknown bit. Undocumented, but not free: AutoCAD writes 1 in front of the SAT text form and
 		//0 in front of the binary one, in every file it was asked to mint - and this single bit is
 		//what kept the SAT form out of a DWG. Measured by changing nothing else: the same drawing
