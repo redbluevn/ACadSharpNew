@@ -3515,9 +3515,9 @@ namespace ACadSharp.IO.DWG
 			{
 				//ACIS Empty bit B X If 1, then no data follows
 				var hasData = this._mergedReaders.ReadBit();
-				if (!hasData)
+				if (!hasData && !this.readModelerGeometryData(template))
 				{
-					this.readModelerGeometryData(template);
+					//The payload gave no way to find its end, so nothing after it can be read.
 					return template;
 				}
 			}
@@ -3593,9 +3593,8 @@ namespace ACadSharp.IO.DWG
 				//same format as described above, except no wireframe
 				//of silhouette data will be present(no empty bits
 				//for these items either).
-				if (!this._mergedReaders.ReadBit())
+				if (!this._mergedReaders.ReadBit() && !this.readModelerGeometryData(template))
 				{
-					this.readModelerGeometryData(template);
 					return template;
 				}
 			}
@@ -3642,11 +3641,24 @@ namespace ACadSharp.IO.DWG
 			this._mergedReaders.ReadBitLong();
 		}
 
-		private void readModelerGeometryData<T>(CadEntityTemplate<T> template)
+		/// <summary>
+		/// Reads the ACIS payload a pre-R2013 modeler geometry entity carries inside itself.
+		/// </summary>
+		/// <returns>
+		/// True when the stream is left exactly at the end of the payload, so the wireframe block
+		/// that follows it can be read; false when the end could not be found.
+		/// </returns>
+		/// <remarks>
+		/// The two forms differ in more than their contents: the length-prefixed SAT text of
+		/// version 1 says where it ends, while version 2 gives no length at all and the end has to
+		/// be found by the marker inside the payload.
+		/// </remarks>
+		private bool readModelerGeometryData<T>(CadEntityTemplate<T> template)
 			where T : ModelerGeometry, new()
 		{
-			//Unknown bit B X
-			bool unknown = this._mergedReaders.ReadBit();
+			//Unknown bit B X - 1 for the SAT text form, 0 for the binary one, in every file
+			//AutoCAD 2027 was asked to write.
+			this._mergedReaders.ReadBit();
 
 			//Version BS Can be 1 or 2.
 			short version = this._mergedReaders.ReadBitShort();
@@ -3675,29 +3687,43 @@ namespace ACadSharp.IO.DWG
 							template.CadObject.AcisData = stream.ToArray();
 						}
 					}
-					break;
+
+					//The zero-length block closes the payload, so the stream is where it should be.
+					return true;
 				//Version == 2:
 				//Immediately following will be an acis file.Header value of “ACIS BinaryFile” indicates
 				//SAB, otherwise it is a text SAT file. No length is given.SAB files will end with
 				//“End\x0E\x02of\x0E\x04ACIS\x0D\x04data”. SAT files must be parsed to find the end.
 				case 2:
 					//The stream gives no payload length: read up to the end of the
-					//object data and cut at the End-of-ACIS-data marker. Anything
-					//after the marker (wireframe data, handles) is discarded with
-					//the rest of the object, the caller returns right away.
+					//object data and cut at the End-of-ACIS-data marker.
 					long currentPos = this._mergedReaders.PositionInBits();
 					long endPos = this._objectInitialPos + (this._size * 8);
 					int remainingBytes = (int)((endPos - currentPos) / 8);
 
-					if (remainingBytes > 0)
+					if (remainingBytes <= 0)
 					{
-						byte[] data = this._mergedReaders.ReadBytes(remainingBytes);
-						template.CadObject.AcisData = AcisTextCodec.TrimAtAcisEnd(data);
+						return false;
 					}
-					break;
+
+					byte[] data = this._mergedReaders.ReadBytes(remainingBytes);
+					byte[] payload = AcisTextCodec.TrimAtAcisEnd(data);
+					template.CadObject.AcisData = payload;
+
+					if (payload.Length >= remainingBytes)
+					{
+						//No end marker: the read swallowed the wireframe block and the handles with
+						//the payload, and there is no way back to where the payload really ended.
+						return false;
+					}
+
+					//Put the reader back at the end of the payload so the wireframe block that
+					//follows it is read rather than thrown away with the rest of the object.
+					this._objectReader.SetPositionInBits(currentPos + (payload.Length * 8));
+					return true;
 				default:
 					this.notify($"Modeler geometry data version {version} not recognized for {template.CadObject.ObjectName}", NotificationType.Warning);
-					break;
+					return false;
 			}
 		}
 
