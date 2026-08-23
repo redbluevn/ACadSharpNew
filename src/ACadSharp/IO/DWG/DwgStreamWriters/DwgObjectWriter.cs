@@ -1161,7 +1161,12 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			//EED size BS size of extended entity data, if any
 			foreach (var item in data)
 			{
-				if (addVersion && item.Key.Name == AppId.DefaultName)
+				//Case-insensitively, because every lookup either side of this one is: the AppIds table
+				//keys OrdinalIgnoreCase and so does TryGet above. Spelled ordinally, a drawing whose
+				//APPID table says 'acad' would fail to match here, fall through to the block below,
+				//find the same application there - and write the second entry the comment below calls
+				//unreadable.
+				if (addVersion && string.Equals(item.Key.Name, AppId.DefaultName, StringComparison.OrdinalIgnoreCase))
 				{
 					//The object already carries data of its own under ACAD; the version goes at the
 					//end of that same entry, which is where AutoCAD puts it. Writing a second entry
