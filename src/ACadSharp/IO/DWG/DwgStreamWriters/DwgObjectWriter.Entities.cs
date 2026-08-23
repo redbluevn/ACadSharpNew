@@ -2267,19 +2267,12 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			}
 		}
 
-		//Wireframe data present. This follows the payload rather than ending the entity: the reader
-		//here stops at the end-of-ACIS marker and does not care what comes after, but AutoCAD reads
-		//on, and a file that stopped short of this bit was refused before it finished loading.
-		if (!this.R2013Plus)
-		{
-			//Before R2013 the entity carries its geometry, and a wireframe block on top of it is not
-			//needed: written this way the drawing opens and audits clean.
-			this._writer.WriteBit(false);
-		}
-		else
-		{
-			this.writeWireframeData(geometry);
-		}
+		//The wireframe block follows the payload rather than the entity ending with it - a file that
+		//stopped short of this bit was refused before it finished loading. Before R2013 the block
+		//itself is optional (a drawing that says it has none opens and audits 0, which is what this
+		//writer used to say), but it carries the point the shape is drawn about and the isoline
+		//count, and both are read now, so both are written back.
+		this.writeWireframeData(geometry);
 
 		if (this.R2007Plus)
 		{
@@ -2290,14 +2283,18 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		if (this.R2013Plus)
 		{
 			this.writeModelerGuid(geometry);
+		}
 
-			if (geometry is Solid3D)
-			{
-				//History object, hard owner - the same handle a DXF 3DSOLID carries as group 350.
-				//AutoCAD owns an ACSH_HISTORY_CLASS object here; this library does not model one,
-				//and a null handle is what its DXF writer puts there.
-				this._writer.HandleReference(DwgReferenceType.HardOwnership, 0);
-			}
+		if (this.R2007Plus && geometry is Solid3D)
+		{
+			//History object, hard owner - the same handle a DXF 3DSOLID carries as group 350.
+			//AutoCAD owns an ACSH_HISTORY_CLASS object here; this library does not model one, and a
+			//null handle is what its DXF writer puts there. The reader has always read this handle
+			//from R2007 on while the writer wrote it from R2013 on, which left every R2007-R2010
+			//solid this library wrote one handle short: the reader then took whatever padding
+			//followed the handle stream for a reference code, and the entity was lost or kept by
+			//luck alone.
+			this._writer.HandleReference(DwgReferenceType.HardOwnership, 0);
 		}
 	}
 
@@ -2329,7 +2326,8 @@ internal partial class DwgObjectWriter : DwgSectionIO
 	}
 
 	/// <summary>
-	/// The wireframe block an R2013+ modeler geometry entity carries after its header.
+	/// The wireframe block a modeler geometry entity carries after its header - before R2013 that
+	/// means after the ACIS payload the entity holds itself.
 	/// </summary>
 	/// <remarks>
 	/// Saying "no wireframe data" here is what made AutoCAD refuse every R2013+ drawing this writer
@@ -2369,22 +2367,51 @@ internal partial class DwgObjectWriter : DwgSectionIO
 
 		this._writer.WriteBitLong(0);
 
-		//ACIS empty bit: the geometry is in the AcDs data section, not here.
+		//ACIS empty bit: no second payload follows the wireframe block. The geometry is either in
+		//the AcDs data section or already written above it.
 		this._writer.WriteBit(true);
 	}
 
+	/// <summary>
+	/// The largest SAT block AutoCAD writes: its own R2000 files cut a payload of 5,041 bytes into
+	/// one block of 4,096 and one of 945.
+	/// </summary>
+	private const int MaxSatBlockSize = 4096;
+
 	private void writeModelerGeometryData(ModelerGeometry geometry)
 	{
-		//Unknown bit
-		this._writer.WriteBit(false);
+		bool sat = !geometry.IsBinaryAcisData;
 
-		//Version 2: the payload follows raw, and the reader finds its end by the end-of-ACIS marker
-		//inside it. Version 1 - the character-swapped SAT text in length-prefixed blocks, which is
-		//what R2000 files carry - is not written: written that way, in one block or one block per
-		//line, AutoCAD refuses to open the drawing at all, and a region no one can open is worse
-		//than a region that says it was left out. isEntitySupported keeps those entities out.
-		this._writer.WriteBitShort(2);
-		this._writer.WriteBytes(geometry.AcisData);
+		//Unknown bit. Undocumented, but not free: AutoCAD writes 1 in front of the SAT text form and
+		//0 in front of the binary one, in every file it was asked to mint - and this single bit is
+		//what kept the SAT form out of a DWG. Measured by changing nothing else: the same drawing
+		//written with the bit set opens and audits 0, written with it clear AutoCAD will not open
+		//at all.
+		this._writer.WriteBit(sat);
+
+		if (sat)
+		{
+			//Version 1: the character-swapped SAT text, in length-prefixed blocks closed by a
+			//zero length. The codec is an involution, so the same call that decoded it encodes it.
+			this._writer.WriteBitShort(1);
+
+			byte[] encoded = AcisTextCodec.Decode(geometry.AcisData);
+			for (int offset = 0; offset < encoded.Length; offset += MaxSatBlockSize)
+			{
+				int length = Math.Min(MaxSatBlockSize, encoded.Length - offset);
+				this._writer.WriteBitLong(length);
+				this._writer.WriteBytes(encoded, offset, length);
+			}
+
+			this._writer.WriteBitLong(0);
+		}
+		else
+		{
+			//Version 2: the payload follows raw, and the reader finds its end by the end-of-ACIS
+			//marker inside it.
+			this._writer.WriteBitShort(2);
+			this._writer.WriteBytes(geometry.AcisData);
+		}
 	}
 
 	private void writeSpline(Spline spline)

@@ -177,17 +177,21 @@ internal partial class DwgObjectWriter : DwgSectionIO
 
 				return false;
 			//Modeler geometry - a region, a solid or a body - is only worth writing with its geometry,
-			//and where that geometry goes depends on the version: inside the entity as a binary
-			//payload from R2004 to R2010, and in the AcDs data section from R2013. Two cases are
-			//still refused, both measured against AutoCAD 2027:
-			//  R2000  : wants SAT text in the entity, in length-prefixed blocks; written that way, in
-			//           one block or one block per line, AutoCAD refuses the drawing.
-			//  SAT    : same, at any version - the corpus has none, every region in it is binary.
+			//and where that geometry goes depends on the version and on the form of the payload:
+			//SAT text goes inside the entity in length-prefixed blocks at every version before
+			//R2013, a binary payload goes inside the entity from R2004 to R2010 and in the AcDs
+			//data section from R2013. That leaves the two corners where the form and the version
+			//do not meet, both measured against AutoCAD 2027 rather than assumed:
+			//  binary before R2004 : the modeler had no binary form for the file to carry.
+			//  SAT from R2013      : the data section is read as binary only. Written there, the
+			//                        drawing opens and audits 0 - but AutoCAD's own save of it down
+			//                        to R2010 hands back a region with no geometry at all, so the
+			//                        entity it keeps is a handle with no shape.
 			case ModelerGeometry modeler when !this.canWriteModelerGeometry(modeler):
 				if (notify)
 				{
 					this.notify(
-						$"{modeler.GetType().Name} {modeler.Handle} is not written to a {this._version} file: {this.whyNotWritten(modeler)}. {ACadVersion.AC1018} and later keep it.",
+						$"{modeler.GetType().Name} {modeler.Handle} is not written to a {this._version} file: {this.whyNotWritten(modeler)}.",
 						NotificationType.NotImplemented);
 				}
 
@@ -199,10 +203,20 @@ internal partial class DwgObjectWriter : DwgSectionIO
 
 	private bool canWriteModelerGeometry(ModelerGeometry geometry)
 	{
-		return geometry.AcisData != null
-			&& geometry.AcisData.Length > 0
-			&& geometry.IsBinaryAcisData
-			&& this._version >= ACadVersion.AC1018;
+		if (geometry.AcisData == null || geometry.AcisData.Length == 0)
+		{
+			return false;
+		}
+
+		//SAT text is carried by the entity itself, which every version before R2013 has room for.
+		//From R2013 the payload lives in the AcDs data section, and the only form written there is
+		//the binary one.
+		if (!geometry.IsBinaryAcisData)
+		{
+			return !this.R2013Plus;
+		}
+
+		return this._version >= ACadVersion.AC1018;
 	}
 
 	private string whyNotWritten(ModelerGeometry geometry)
@@ -214,10 +228,10 @@ internal partial class DwgObjectWriter : DwgSectionIO
 
 		if (!geometry.IsBinaryAcisData)
 		{
-			return "its geometry is SAT text, which this writer does not put back into a DWG";
+			return $"its geometry is SAT text and {this._version} keeps the payload in the AcDs data section, which holds the binary form only - {ACadVersion.AC1024} and earlier write it";
 		}
 
-		return $"{this._version} keeps the geometry as SAT text inside the entity, and AutoCAD refuses every drawing this writer produces that way";
+		return $"its geometry is a binary payload and {this._version} predates the binary form of the modeler - {ACadVersion.AC1018} and later write it";
 	}
 
 	private void registerObject(CadObject cadObject)
