@@ -174,7 +174,14 @@ public partial class Hatch
 			/// <inheritdoc/>
 			public override BoundingBox GetBoundingBox()
 			{
-				return BoundingBox.FromPoints(this.ControlPoints);
+				//"Position values are only X and Y, Z represents the weight" - the remark on
+				//ControlPoints, a few lines up. Handing them to FromPoints as if they were points
+				//built a box whose Z range was a range of WEIGHTS, so a hatch with a spline boundary
+				//reported a height it does not have, every block holding one inherited it, and every
+				//INSERT of that block inherited it again. Measured on the client corpus: thirty-five
+				//hatches and five inserts whose box grew from Z 0 to Z 1 with nothing having moved.
+				//A hatch boundary is planar, so the box is flat.
+				return BoundingBox.FromPoints(this.ControlPoints.Select(c => new XYZ(c.X, c.Y, 0)));
 			}
 
 			/// <summary>
