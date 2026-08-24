@@ -2475,7 +2475,16 @@ internal abstract class DxfSectionReaderBase
 					return false;
 				}
 
-				object value = this._reader.Value;
+				//ValueAsString, not Value: DXF carries a control character inside a string as a caret
+				//pair, and AutoCAD writes them - its own export of the sample holds
+				//"this is a Mtext^Jwith multiple lines in it" and a TOLERANCE reading
+				//"{\Fgdt;j}%%v...^J{\Fgdt;d}%%v...". The reader already knows how to undo that, in
+				//ValueAsString, and this path went round it and handed the raw text on, so every
+				//string assigned through the class map kept the carets: a tolerance came back 66
+				//characters where the drawing had 63, with the two characters ^ and J standing where
+				//each line break belonged. The writer side has always encoded them correctly, so
+				//what we wrote was right and only what we read back was wrong.
+				object value = this._reader.Value is string ? this._reader.ValueAsString : this._reader.Value;
 
 				if (dxfProperty.ReferenceType.HasFlag(DxfReferenceType.IsAngle))
 				{
