@@ -1295,7 +1295,7 @@ internal class DxfObjectsSectionReader : DxfSectionReaderBase
 				this._reader.ReadNext();
 				var code = (DxfCode)this._reader.ValueAsInt;
 				this._reader.ReadNext();
-				object value = this._reader.Value;
+				object value = this._reader.Value is string ? this._reader.ValueAsString : this._reader.Value;
 
 				expression.EvaluatedValue = new DxfValuePair(code, value);
 				return true;
@@ -3243,7 +3243,15 @@ internal class DxfObjectsSectionReader : DxfSectionReaderBase
 						template.CadObject.CreateEntry(this._reader.Code, null));
 					break;
 				default:
-					template.CadObject.CreateEntry(this._reader.Code, this._reader.Value);
+					//ValueAsString for a string, for the reason in DxfSectionReaderBase: DXF spells a
+					//control character inside a string as a caret pair and escapes a real caret as
+					//"^ ", and reading Value raw keeps both. An XRecord is where a dynamic block
+					//keeps its state - the active visibility state is code 1 of a record under
+					//ACAD_ENHANCEDBLOCKDATA - so a name holding a caret came back with a space
+					//after it and a name holding a line break came back holding the characters ^J.
+					template.CadObject.CreateEntry(
+						this._reader.Code,
+						this._reader.Value is string ? this._reader.ValueAsString : this._reader.Value);
 					break;
 			}
 

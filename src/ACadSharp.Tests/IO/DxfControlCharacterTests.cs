@@ -1,6 +1,7 @@
 namespace ACadSharp.Tests.IO;
 
 using ACadSharp.Entities;
+using ACadSharp.Objects;
 using ACadSharp.IO;
 using CSMath;
 using System.IO;
@@ -54,6 +55,29 @@ public class DxfControlCharacterTests
 		int[] after = this.tolerances(this.roundTripDxf(doc)).Select(t => t.Length).OrderBy(n => n).ToArray();
 
 		Assert.Equal(before, after);
+	}
+
+	[Theory]
+	[InlineData("plain")]
+	[InlineData("two\nlines")]
+	[InlineData("caret ^ inside")]
+	[InlineData("^J looking like an escape")]
+	public void AnXRecordStringKeepsItsExactCharactersThroughDxf(string value)
+	{
+		//An XRecord is where a dynamic block keeps its state: the active visibility state of an
+		//instance is code 1 of a record under ACAD_ENHANCEDBLOCKDATA. Before this, a value holding a
+		//caret came back with a space after it and one holding a line break came back holding the
+		//two characters ^ and J, so any application reading that state got a name that did not match
+		//the one the definition declares.
+		CadDocument doc = new CadDocument(ACadVersion.AC1032);
+		XRecord record = new XRecord();
+		record.CreateEntry(1, value);
+		doc.RootDictionary.Add("CONTROL_CHARS", record);
+
+		CadDocument back = this.roundTripDxf(doc);
+
+		Assert.True(back.RootDictionary.TryGetEntry("CONTROL_CHARS", out XRecord got));
+		Assert.Equal(value, got.Entries.Single(e => e.Code == 1).Value);
 	}
 
 	private string[] tolerances(CadDocument doc)
