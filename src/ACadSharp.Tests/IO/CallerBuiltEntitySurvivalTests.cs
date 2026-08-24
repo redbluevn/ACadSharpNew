@@ -82,6 +82,20 @@ public class CallerBuiltEntitySurvivalTests
 			mline.Vertices.Add(new MLine.Vertex { Position = new XYZ(10, 0, 0), Direction = XYZ.AxisX, Miter = XYZ.AxisY });
 			return mline;
 		},
+		["PdfUnderlay"] = () => new PdfUnderlay(new ACadSharp.Objects.PdfUnderlayDefinition
+		{
+			Name = "probe",
+			File = "probe.pdf",
+		})
+		{
+			InsertPoint = new XYZ(1, 1, 0),
+		},
+		["Viewport"] = () => new Viewport
+		{
+			Center = new XYZ(5, 5, 0),
+			Width = 10,
+			Height = 8,
+		},
 		["RasterImage"] = () => new RasterImage(new ACadSharp.Objects.ImageDefinition
 		{
 			Name = "probe",
