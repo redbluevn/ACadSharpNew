@@ -29,7 +29,13 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 
 		this._writer.Write(62, color.Color.GetApproxIndex());
 		this._writer.WriteTrueColor(420, color.Color);
-		this._writer.Write(430, $"{color.Name}${color.BookName}");
+		//Name is already "<book>$<colour>" - its getter builds it from BookName and ColorName - so
+		//appending the book again wrote "RAL CLASSIC$RAL 1006$RAL CLASSIC". Reading that back, the
+		//Name setter splits on '$' and takes first and last, giving book RAL CLASSIC and colour RAL
+		//CLASSIC, and the entities that name the colour "RAL CLASSIC$RAL 1006" then find nothing in
+		//the document's colour table and lose their book colour entirely. The entity writer beside
+		//this one has always written Name on its own, which is what both ends agree on.
+		this._writer.Write(430, color.Name);
 	}
 
 	protected void writeDictionary(CadDictionary dict)
