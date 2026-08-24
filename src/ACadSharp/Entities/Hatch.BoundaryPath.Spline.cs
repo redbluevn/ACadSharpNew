@@ -86,18 +86,27 @@ public partial class Hatch
 			public Spline(Entities.Spline spline)
 			{
 				this.Degree = spline.Degree;
-				this.IsRational = true;
 				this.IsPeriodic = spline.IsClosed;
 				if (!spline.ControlPoints.Any())
 				{
 					throw new ArgumentException("The HatchBoundaryPath spline edge requires a spline entity with control points.", nameof(spline));
 				}
 
+				//A spline carries a weight for every control point or none at all, and this used to
+				//read spline.Weights[i] regardless - so converting an ordinary non-rational spline,
+				//whose weight list is empty because that is what non-rational means, threw an index
+				//exception naming nothing. Weight 1 is not a guess here: it is the definition of a
+				//control point that carries no weight. A list that is neither empty nor complete is
+				//the caller's mistake and is reported as such.
+				bool weighted = spline.Weights.Count > 0;
+				spline.AssertWeightsAreWritable();
+				this.IsRational = weighted;
+
 				Matrix3 trans = Matrix3.ArbitraryAxis(spline.Normal).Transpose();
 				for (int i = 0; i < spline.ControlPoints.Count; i++)
 				{
 					XYZ point = trans * spline.ControlPoints[i];
-					this.ControlPoints.Add(new XYZ(point.X, point.Y, spline.Weights[i]));
+					this.ControlPoints.Add(new XYZ(point.X, point.Y, weighted ? spline.Weights[i] : 1.0));
 				}
 
 				this.Knots.AddRange(spline.Knots);

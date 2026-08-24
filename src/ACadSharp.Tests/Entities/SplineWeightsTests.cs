@@ -64,6 +64,67 @@ public class SplineWeightsTests
 		Assert.Equal(5, spline.ControlPoints.Count);
 	}
 
+	[Fact]
+	public void AnOrdinaryNonRationalSplineConvertsToAHatchBoundaryEdge()
+	{
+		//The same defect one layer up, and worse: this is a public constructor and it failed on the
+		//ordinary case, not the malformed one. A non-rational spline has an empty weight list -
+		//that is what non-rational means - and the conversion read Weights[i] for every control
+		//point regardless, so it threw an index exception naming nothing.
+		Spline plain = this.spline(weights: 0, controlPoints: 5);
+
+		Hatch.BoundaryPath.Spline edge = new(plain);
+
+		Assert.Equal(5, edge.ControlPoints.Count);
+		Assert.False(edge.IsRational);
+		Assert.All(edge.ControlPoints, p => Assert.Equal(1.0, p.Z));
+	}
+
+	[Fact]
+	public void AWeightedSplineKeepsItsWeightsThroughTheHatchEdge()
+	{
+		Spline rational = this.spline(weights: 5, controlPoints: 5);
+		rational.Weights[2] = 2.5;
+
+		Hatch.BoundaryPath.Spline edge = new(rational);
+
+		Assert.True(edge.IsRational);
+		Assert.Equal(2.5, edge.ControlPoints[2].Z);
+	}
+
+	[Fact]
+	public void APartialWeightListIsRefusedByTheHatchEdgeToo()
+	{
+		Spline partial = this.spline(weights: 1, controlPoints: 5);
+
+		InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+			() => new Hatch.BoundaryPath.Spline(partial));
+
+		Assert.Contains("1 weights for 5 control points", ex.Message);
+	}
+
+	private Spline spline(int weights, int controlPoints)
+	{
+		Spline spline = new Spline();
+		spline.Degree = 3;
+		for (int i = 0; i < controlPoints; i++)
+		{
+			spline.ControlPoints.Add(new XYZ(i, i, 0));
+		}
+
+		for (int i = 0; i < controlPoints + 4; i++)
+		{
+			spline.Knots.Add(i);
+		}
+
+		for (int i = 0; i < weights; i++)
+		{
+			spline.Weights.Add(1.0);
+		}
+
+		return spline;
+	}
+
 	private CadDocument document(int weights, int controlPoints)
 	{
 		CadDocument doc = new CadDocument();
