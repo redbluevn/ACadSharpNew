@@ -109,6 +109,49 @@ public class CallerBuiltEntitySurvivalTests
 		},
 	};
 
+	/// <summary>
+	/// What has to still be true of each entity afterwards, beyond it being there at all.
+	/// </summary>
+	/// <remarks>
+	/// Survival was the weakest useful assertion and it earned its place - a caller-built
+	/// TableEntity used to vanish entirely. But three defects found on 2026-08-24 and 2026-08-25
+	/// were entities that survived with their contents changed: a hatch whose bounding box grew a
+	/// height made of weights, a book colour whose name doubled, and text whose line breaks came
+	/// back as the two characters ^ and J. An existence check passes all three.
+	/// </remarks>
+	private static readonly Dictionary<string, Action<Entity>> _checks = new()
+	{
+		["AttributeDefinition"] = e =>
+		{
+			AttributeDefinition a = (AttributeDefinition)e;
+			Assert.Equal("TAG", a.Tag);
+			Assert.Equal("value", a.Value);
+			Assert.Equal(2.5, a.Height, 9);
+		},
+		["DimensionAligned"] = e =>
+		{
+			DimensionAligned d = (DimensionAligned)e;
+			Assert.Equal(0, d.FirstPoint.X, 9);
+			Assert.Equal(10, d.SecondPoint.X, 9);
+		},
+		["Ray"] = e => Assert.Equal(1, ((Ray)e).StartPoint.X, 9),
+		["XLine"] = e => Assert.Equal(1, ((XLine)e).FirstPoint.Y, 9),
+		["Solid"] = e =>
+		{
+			Solid solid = (Solid)e;
+			Assert.Equal(10, solid.SecondCorner.X, 9);
+			Assert.Equal(10, solid.ThirdCorner.Y, 9);
+		},
+		["Tolerance"] = e => Assert.Equal("%%v0.5", ((Tolerance)e).Text),
+		["MLine"] = e => Assert.Equal(2, ((MLine)e).Vertices.Count),
+		["Viewport"] = e =>
+		{
+			Viewport v = (Viewport)e;
+			Assert.Equal(10, v.Width, 9);
+			Assert.Equal(8, v.Height, 9);
+		},
+	};
+
 	public static IEnumerable<object[]> DwgCases =>
 		_cases.Keys.SelectMany(name => new[]
 		{
@@ -155,7 +198,11 @@ public class CallerBuiltEntitySurvivalTests
 		DwgWriter.Write(stream, doc);
 
 		CadDocument back = DwgReader.Read(new MemoryStream(stream.ToArray()));
-		Assert.Single(back.Entities.Where(e => e.GetType() == type));
+		Entity got = Assert.Single(back.Entities.Where(e => e.GetType() == type));
+		if (_checks.TryGetValue(name, out Action<Entity> check))
+		{
+			check(got);
+		}
 	}
 
 	[Theory]
@@ -174,6 +221,10 @@ public class CallerBuiltEntitySurvivalTests
 		}
 
 		CadDocument back = DxfReader.Read(new MemoryStream(stream.ToArray()));
-		Assert.Single(back.Entities.Where(e => e.GetType() == type));
+		Entity got = Assert.Single(back.Entities.Where(e => e.GetType() == type));
+		if (_checks.TryGetValue(name, out Action<Entity> check))
+		{
+			check(got);
+		}
 	}
 }
