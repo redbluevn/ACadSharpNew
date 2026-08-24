@@ -730,9 +730,16 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 			case AecCleanupGroup:
 			case AecBinRecord:
 			case MultiLeaderObjectContextData:
-			//A visual style is only written when it carries the R2013+ property list; a style read
-			//from an older file has no list and there is nothing to write.
-			case VisualStyle visualStyle when visualStyle.Properties.Count != VisualStyle.PropertyCount:
+			//A visual style needs the full property list, because that is the only layout DXF has.
+			//This used to drop any style whose list was short, on the reasoning that "a style read
+			//from an older file has no list and there is nothing to write" - which the DWG writer
+			//had already disproved: BuildPropertyList assembles the list from the named fields an
+			//older file does carry, and without it a drawing saved from an older version lost every
+			//visual style it had. DXF kept the old reasoning and kept losing them: measured on
+			//sample_AC1018 and sample_AC1024, all twenty-four styles survived a DWG round trip and
+			//none survived a DXF one. Same repair here, and the style is still dropped if it does
+			//not work.
+			case VisualStyle visualStyle when !canWriteVisualStyle(visualStyle):
 			case ProxyObject:
 			case MTextAttributeObjectContextData:
 			case BlockReferenceObjectContextData:
@@ -1818,6 +1825,25 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 	/// Writes the R2013+ positional property list of a visual style; the position in the list
 	/// identifies the property and each entry is followed by its flag, group code 176.
 	/// </summary>
+	/// <summary>
+	/// Whether a <see cref="VisualStyle"/> can be written, repairing it first when it can be.
+	/// </summary>
+	/// <remarks>
+	/// The mirror of <c>DwgObjectWriter.canWriteVisualStyle</c>. DXF stores the property list and
+	/// nothing else, so a style needs all <see cref="VisualStyle.PropertyCount"/> entries; a style
+	/// read from a version that keeps the named fields instead arrives with fewer, and
+	/// <see cref="VisualStyle.BuildPropertyList"/> is what turns one into the other.
+	/// </remarks>
+	private static bool canWriteVisualStyle(VisualStyle visualStyle)
+	{
+		if (visualStyle.Properties.Count < VisualStyle.PropertyCount)
+		{
+			visualStyle.BuildPropertyList();
+		}
+
+		return visualStyle.Properties.Count >= VisualStyle.PropertyCount;
+	}
+
 	private void writeVisualStyle(VisualStyle visualStyle)
 	{
 		this._writer.Write(100, DxfSubclassMarker.VisualStyle);
