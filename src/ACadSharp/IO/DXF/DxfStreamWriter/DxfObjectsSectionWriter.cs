@@ -1438,22 +1438,22 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 
 		if (flags.HasFlag(AssociativityFlags.FirstPointReference))
 		{
-			this.writeOsnapPointRef(dimAssociation.FirstPointRef);
+			this.writeOsnapPointRef(dimAssociation.FirstPointRef, dimAssociation.Handle);
 		}
 
 		if (flags.HasFlag(AssociativityFlags.SecondPointReference))
 		{
-			this.writeOsnapPointRef(dimAssociation.SecondPointRef);
+			this.writeOsnapPointRef(dimAssociation.SecondPointRef, dimAssociation.Handle);
 		}
 
 		if (flags.HasFlag(AssociativityFlags.ThirdPointReference))
 		{
-			this.writeOsnapPointRef(dimAssociation.ThirdPointRef);
+			this.writeOsnapPointRef(dimAssociation.ThirdPointRef, dimAssociation.Handle);
 		}
 
 		if (flags.HasFlag(AssociativityFlags.FourthPointReference))
 		{
-			this.writeOsnapPointRef(dimAssociation.FourthPointRef);
+			this.writeOsnapPointRef(dimAssociation.FourthPointRef, dimAssociation.Handle);
 		}
 	}
 
@@ -1659,11 +1659,19 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 		this._writer.WriteHandle(330, reactor.Image);
 	}
 
-	private void writeOsnapPointRef(DimensionAssociation.OsnapPointRef osnapPoint)
+	private void writeOsnapPointRef(DimensionAssociation.OsnapPointRef osnapPoint, ulong owner)
 	{
 		if (osnapPoint == null)
 		{
 			return;
+		}
+
+		//The reader takes 74 and 92 in, and 332 - the handle that says which object the intersection
+		//is with - it throws away. Nothing here writes any of the three, so a reference that arrived
+		//with an intersection leaves without one. Reported rather than invented: see T85.
+		if (osnapPoint.HasIntersectionReference)
+		{
+			this.notify($"Dimension association {owner} names an intersection object in one of its osnap references; the 74/92/332 group is not written, so that part of the reference is lost", NotificationType.Warning);
 		}
 
 		this._writer.Write(1, DimensionAssociation.OsnapPointRefClassName);

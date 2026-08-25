@@ -55,6 +55,19 @@ public partial class DimensionAssociation
 		[DxfCodeValue(92)]
 		public int IntersectionGsMarker { get; set; }
 
+		/// <summary>
+		/// Whether this reference attaches to the intersection of its object with a second one.
+		/// </summary>
+		/// <remarks>
+		/// The DXF reader takes 74 and 92 in but drops the 332 that names the second object, and no
+		/// writer emits any of the three - so a reference that arrives with an intersection leaves
+		/// without one. The writers ask this to report that loss instead of making it silently
+		/// (T85); filling 74 and 92 in without 332 would be half a structure, and no drawing on hand
+		/// carries one to measure the rest against.
+		/// </remarks>
+		internal bool HasIntersectionReference
+			=> this.IntersectionSubType != SubentType.None || this.IntersectionGsMarker != 0;
+
 		//302
 		//Handle(string) of intersection Xref object
 

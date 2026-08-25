@@ -174,6 +174,69 @@ public class DimensionAssociationWriteTests
 	[Theory]
 	[InlineData(true)]
 	[InlineData(false)]
+	public void AnIntersectionReferenceIsNotDroppedInSilence(bool dwg)
+	{
+		//T85. The DXF reader takes 74 and 92 in and drops the 332 that names the second object;
+		//no writer emits any of the three. So a reference that arrives attached to an intersection
+		//leaves without one, and until this it left without a word either - the one class of loss
+		//this project treats as worse than the loss itself.
+		//
+		//Not fixed by writing 74 and 92: without 332 that is half a structure, and no drawing in
+		//the upstream samples or in the seventeen production drawings carries one to measure the
+		//rest against.
+		CadDocument doc = this.document(out DimensionAssociation association);
+		association.FirstPointRef.IntersectionSubType = SubentType.Edge;
+		association.FirstPointRef.IntersectionGsMarker = 3;
+
+		string reported = null;
+		void watch(object s, NotificationEventArgs e)
+		{
+			if (e.Message.Contains("intersection object"))
+			{
+				reported = e.Message;
+			}
+		}
+
+		using MemoryStream stream = new();
+		if (dwg)
+		{
+			using DwgWriter writer = new(stream, doc);
+			writer.OnNotification += watch;
+			writer.Write();
+		}
+		else
+		{
+			using DxfWriter writer = new(stream, doc, false);
+			writer.OnNotification += watch;
+			writer.Write();
+		}
+
+		Assert.NotNull(reported);
+		Assert.Contains(association.Handle.ToString(), reported);
+	}
+
+	[Fact]
+	public void AReferenceWithNoIntersectionSaysNothing()
+	{
+		//The other half of the rule: a warning that fires on drawings that lost nothing is a warning
+		//people learn to scroll past. None of the seventeen production drawings has an intersection
+		//reference, so this must stay quiet on all of them.
+		CadDocument doc = this.document(out DimensionAssociation _);
+
+		string reported = null;
+		using MemoryStream stream = new();
+		using (DwgWriter writer = new(stream, doc))
+		{
+			writer.OnNotification += (s, e) => { if (e.Message.Contains("intersection object")) reported = e.Message; };
+			writer.Write();
+		}
+
+		Assert.Null(reported);
+	}
+
+	[Theory]
+	[InlineData(true)]
+	[InlineData(false)]
 	public void AFlagWithNoReferenceBehindItIsNotWritten(bool dwg)
 	{
 		//The flags say how many references follow. A flag with nothing behind it would promise data

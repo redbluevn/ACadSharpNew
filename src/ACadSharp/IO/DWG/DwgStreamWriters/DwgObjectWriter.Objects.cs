@@ -928,22 +928,22 @@ internal partial class DwgObjectWriter : DwgSectionIO
 
 		if (flags.HasFlag(AssociativityFlags.FirstPointReference))
 		{
-			this.writeOsnapPointRef(association.FirstPointRef);
+			this.writeOsnapPointRef(association.FirstPointRef, association.Handle);
 		}
 
 		if (flags.HasFlag(AssociativityFlags.SecondPointReference))
 		{
-			this.writeOsnapPointRef(association.SecondPointRef);
+			this.writeOsnapPointRef(association.SecondPointRef, association.Handle);
 		}
 
 		if (flags.HasFlag(AssociativityFlags.ThirdPointReference))
 		{
-			this.writeOsnapPointRef(association.ThirdPointRef);
+			this.writeOsnapPointRef(association.ThirdPointRef, association.Handle);
 		}
 
 		if (flags.HasFlag(AssociativityFlags.FourthPointReference))
 		{
-			this.writeOsnapPointRef(association.FourthPointRef);
+			this.writeOsnapPointRef(association.FourthPointRef, association.Handle);
 		}
 	}
 
@@ -2123,7 +2123,7 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		}
 	}
 
-	private void writeOsnapPointRef(DimensionAssociation.OsnapPointRef osnap)
+	private void writeOsnapPointRef(DimensionAssociation.OsnapPointRef osnap, ulong owner)
 	{
 		//1
 		this._writer.WriteVariableText(DimensionAssociation.OsnapPointRefClassName);
@@ -2146,6 +2146,14 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		this._writer.WriteBitLong(osnap.GsMarker);
 
 		//No intersection object: zero ids in that path, so no handle and no 74/92/332/302 follow.
+		//A reference that came in carrying one loses it here, and says so - see T85: writing 74 and
+		//92 without the 332 that names the object would be half a structure, and no drawing in the
+		//upstream samples or in seventeen production drawings has one to measure against.
+		if (osnap.HasIntersectionReference)
+		{
+			this.notify($"Dimension association {owner} names an intersection object in one of its osnap references; the 74/92/332 group is not written, so that part of the reference is lost", NotificationType.Warning);
+		}
+
 		this._writer.WriteBitLong(0);
 
 		//40
