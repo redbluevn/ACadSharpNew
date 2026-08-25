@@ -3719,6 +3719,14 @@ namespace ACadSharp.IO.DWG
 					//	the regions of that drawing that carry 815 silhouettes: 17967 bits left,
 					//	34 for the count and 815 x 22 for the records, ending exactly 3 bits before
 					//	the end - while 815 x 23 does not even divide into what is there.
+					//
+					//	Independent corroboration, found the same day: GNU LibreDWG models this same
+					//	bit as a per-silhouette "has_wires" flag gating "num_wires" - the structure
+					//	this reader uses, arrived at separately (their dwg_spec_shared.h,
+					//	Dwg_3DSOLID_silhouette; read for which fields exist, no code taken - GPL).
+					//	Their name for it is likely the better one. Do NOT, however, match LibreDWG
+					//	on the VP id above: they read a plain BL at every version, which the R2018
+					//	measurement (drawing D losing its region) rules out.
 					if (this._mergedReaders.ReadBit())
 					{
 						//Num Wires BL X
