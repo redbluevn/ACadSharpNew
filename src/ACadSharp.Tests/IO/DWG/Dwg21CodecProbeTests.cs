@@ -918,6 +918,335 @@ public class Dwg21CodecProbeTests
 	}
 
 	[Fact]
+	public void DiagnosticRecompressOneDataPage()
+	{
+		//H11, on the minted minimal real file: ONE data page (the Header section's single page)
+		//re-compressed by OUR compressor and RS-encoded into the same slot; the section map's
+		//compressed-size field follows, through the H6-proven in-place rebuild. Refused means
+		//AutoCAD inspects the compressed stream itself; accepted exonerates the whole data-page
+		//pipeline and pins the writer's fault onto map/metadata VALUES.
+		string outDir = Environment.GetEnvironmentVariable("MOREDWG_AC21_HYBRID");
+		string realPath = Environment.GetEnvironmentVariable("MOREDWG_AC21_REAL");
+		if (string.IsNullOrEmpty(outDir) || string.IsNullOrEmpty(realPath))
+		{
+			return;
+		}
+
+		byte[] real = File.ReadAllBytes(realPath);
+		byte[] metadata = decodeFileHeaderPage(real);
+
+		byte[] pmData = decodeSystemPage(real, BitConverter.ToUInt64(metadata, 0x38),
+			BitConverter.ToUInt64(metadata, 0x50), BitConverter.ToUInt64(metadata, 0x58),
+			BitConverter.ToUInt64(metadata, 0x18));
+		var records = new Dictionary<long, (long off, long size)>();
+		long acc = 0;
+		for (int i = 0; i + 16 <= pmData.Length; i += 16)
+		{
+			long size = BitConverter.ToInt64(pmData, i);
+			long id = Math.Abs(BitConverter.ToInt64(pmData, i + 8));
+			records[id] = (acc, size);
+			acc += size;
+		}
+
+		ulong smId = BitConverter.ToUInt64(metadata, 0xC0);
+		(long smOff, long smSlot) = records[(long)smId];
+		byte[] smData = decodeSystemPage(real, (ulong)smOff,
+			BitConverter.ToUInt64(metadata, 0xB0), BitConverter.ToUInt64(metadata, 0xC8),
+			BitConverter.ToUInt64(metadata, 0xD8));
+
+		//Find the AcDb:Header descriptor and its single page entry.
+		int pos = 0;
+		int entryPos = -1;
+		ulong pId = 0, pUn = 0, pCo = 0;
+		while (pos + 0x40 <= smData.Length)
+		{
+			long nameLen = BitConverter.ToInt64(smData, pos + 0x20);
+			long numPages = BitConverter.ToInt64(smData, pos + 0x38);
+			int descPos = pos;
+			pos += 0x40;
+			string name = nameLen > 0 ? Encoding.Unicode.GetString(smData, pos, (int)nameLen).TrimEnd('\0') : "";
+			pos += (int)nameLen;
+			if (name == "AcDb:Header")
+			{
+				Assert.Equal(1L, numPages);
+				entryPos = pos;
+				pId = BitConverter.ToUInt64(smData, pos + 0x10);
+				pUn = BitConverter.ToUInt64(smData, pos + 0x18);
+				pCo = BitConverter.ToUInt64(smData, pos + 0x20);
+			}
+
+			pos += 0x38 * (int)numPages;
+		}
+
+		Assert.True(entryPos >= 0, "AcDb:Header not found");
+		(long pageOff, long pageSlot) = records[(long)pId];
+
+		//Decode the real page: RS de-interleave, take the compressed bytes, decompress.
+		var rs = ACadSharp.IO.DWG.DwgStreamWriters.Dwg21ReedSolomon.DataPages;
+		int alignedReal = (int)((pCo + 7) & ~7UL);
+		int realBlocks = (alignedReal + rs.K - 1) / rs.K;
+		byte[] rawPage = real.Skip((int)(0x480 + pageOff)).Take(realBlocks * 255).ToArray();
+		byte[] realComp = deinterleave(rawPage, realBlocks, rs.K, alignedReal);
+		byte[] plain = new byte[pUn];
+		new DwgLZ77AC21Decompressor().Decompress(realComp, 0U, (uint)pCo, plain);
+
+		//Re-compress with OUR compressor and re-encode into the same slot. With
+		//MOREDWG_AC21_H13 set, the "recompressed" bytes are the REAL compressed bytes verbatim -
+		//the control that isolates the surrounding machinery (RS re-encode, zero padding, section
+		//map rebuild) from the compressor itself.
+		byte[] mine;
+		if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOREDWG_AC21_H13")))
+		{
+			mine = realComp.Take((int)pCo).ToArray();
+		}
+		else
+		{
+			using (var ms = new MemoryStream())
+			{
+				new DwgLZ77AC21Compressor().Compress(plain, 0, plain.Length, ms);
+				mine = ms.ToArray();
+			}
+		}
+
+		//Sanity: our stream round-trips through the reader's decompressor.
+		byte[] check = new byte[plain.Length];
+		new DwgLZ77AC21Decompressor().Decompress(mine, 0U, (uint)mine.Length, check);
+		Assert.True(plain.SequenceEqual(check), "our compressed stream does not round trip");
+
+		string dumpDir = Environment.GetEnvironmentVariable("MOREDWG_AC21_DUMPDIR");
+		if (!string.IsNullOrEmpty(dumpDir))
+		{
+			File.WriteAllBytes(Path.Combine(dumpDir, "my_header.comp"), mine);
+			File.WriteAllBytes(Path.Combine(dumpDir, "my_header.plain"), plain);
+		}
+
+		int alignedMine = (mine.Length + 7) & ~7;
+		int mineBlocks = (alignedMine + rs.K - 1) / rs.K;
+		Assert.True(mineBlocks * 255 <= pageSlot,
+			$"our page {mineBlocks * 255} exceeds slot {pageSlot} (mine c=0x{mine.Length:X}, real c=0x{pCo:X})");
+		byte[] src = new byte[mineBlocks * rs.K];
+		mine.CopyTo(src, 0);
+		byte[] page = rs.EncodeInterleaved(src, mineBlocks);
+
+		byte[] hybrid = real.ToArray();
+		Array.Clear(hybrid, (int)(0x480 + pageOff), (int)pageSlot);
+		page.CopyTo(hybrid, (int)(0x480 + pageOff));
+
+		//H12 first: leave the page bytes alone, corrupt ONLY the stored Page CRC (entry +0x30).
+		//Opened means the CRC field is not checked and H11's ErrorStatus 53 convicts our
+		//compressed stream's semantics; refused with the same error convicts the CRC check.
+		{
+			byte[] smX = smData.ToArray();
+			ulong crcOld = BitConverter.ToUInt64(smX, entryPos + 0x30);
+			BitConverter.GetBytes(crcOld ^ 1UL).CopyTo(smX, entryPos + 0x30);
+			byte[] smCompX;
+			using (var ms = new MemoryStream())
+			{
+				new DwgLZ77AC21Compressor().Compress(smX, 0, smX.Length, ms);
+				smCompX = ms.ToArray();
+			}
+
+			var rsSysX = ACadSharp.IO.DWG.DwgStreamWriters.Dwg21ReedSolomon.SystemPages;
+			int alignedSmX = (smCompX.Length + 7) & ~7;
+			long capBlocksX = smSlot / 255;
+			long factorX = Math.Max(1, capBlocksX * rsSysX.K / alignedSmX);
+			long totalX = alignedSmX * factorX;
+			int smBlocksX = (int)((totalX + rsSysX.K - 1) / rsSysX.K);
+			byte[] smSrcX = new byte[smBlocksX * rsSysX.K];
+			for (int r = 0; r < factorX; r++)
+			{
+				smCompX.CopyTo(smSrcX, r * alignedSmX);
+			}
+
+			byte[] smPageX = rsSysX.EncodeInterleaved(smSrcX, smBlocksX);
+			byte[] hybridX = real.ToArray();
+			Array.Clear(hybridX, (int)(0x480 + smOff), (int)smSlot);
+			smPageX.CopyTo(hybridX, (int)(0x480 + smOff));
+			byte[] metaX = metadata.ToArray();
+			BitConverter.GetBytes((ulong)smCompX.Length).CopyTo(metaX, 0xB0);
+			BitConverter.GetBytes((ulong)factorX).CopyTo(metaX, 0xD8);
+			byte[] headerX = rebuildHeaderPage(metaX);
+			Array.Clear(hybridX, 0x80, 0x400);
+			headerX.CopyTo(hybridX, 0x80);
+			Array.Copy(real, 0x80 + 0x3D8, hybridX, 0x80 + 0x3D8, 0x28);
+			File.WriteAllBytes(Path.Combine(outDir, "h12_crc_flip_only.dwg"), hybridX);
+		}
+
+		//Update the section map's compressed size and rebuild it in place (H6 vehicle).
+		//H14: keep the REAL page bytes but store a WRONG compressed size - if AutoCAD still
+		//opens it, the c field is not used for reading and splice probes can skip sm rebuilds.
+		byte[] sm2 = smData.ToArray();
+		ulong storedC = string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOREDWG_AC21_H14"))
+			? (ulong)mine.Length
+			: 705UL;
+		BitConverter.GetBytes(storedC).CopyTo(sm2, entryPos + 0x20);
+		byte[] smComp2;
+		using (var ms = new MemoryStream())
+		{
+			new DwgLZ77AC21Compressor().Compress(sm2, 0, sm2.Length, ms);
+			smComp2 = ms.ToArray();
+		}
+
+		var rsSys = ACadSharp.IO.DWG.DwgStreamWriters.Dwg21ReedSolomon.SystemPages;
+		int alignedSm = (smComp2.Length + 7) & ~7;
+		long capacityBlocks = smSlot / 255;
+		long factor = Math.Max(1, capacityBlocks * rsSys.K / alignedSm);
+		long total = alignedSm * factor;
+		int smBlocks = (int)((total + rsSys.K - 1) / rsSys.K);
+		byte[] smSrc = new byte[smBlocks * rsSys.K];
+		for (int r = 0; r < factor; r++)
+		{
+			smComp2.CopyTo(smSrc, r * alignedSm);
+		}
+
+		byte[] smPage = rsSys.EncodeInterleaved(smSrc, smBlocks);
+		Assert.True(smPage.Length <= smSlot, "rebuilt section map exceeds its slot");
+		Array.Clear(hybrid, (int)(0x480 + smOff), (int)smSlot);
+		smPage.CopyTo(hybrid, (int)(0x480 + smOff));
+
+		byte[] meta = metadata.ToArray();
+		BitConverter.GetBytes((ulong)smComp2.Length).CopyTo(meta, 0xB0);
+		BitConverter.GetBytes((ulong)factor).CopyTo(meta, 0xD8);
+		byte[] header = rebuildHeaderPage(meta);
+		Array.Clear(hybrid, 0x80, 0x400);
+		header.CopyTo(hybrid, 0x80);
+		Array.Copy(real, 0x80 + 0x3D8, hybrid, 0x80 + 0x3D8, 0x28);
+		File.WriteAllBytes(Path.Combine(outDir, "h11_my_compressed_page.dwg"), hybrid);
+	}
+
+	[Fact]
+	public void DiagnosticPageChecksumHunt()
+	{
+		//The section map's page entries end with two u64 fields this writer has been zeroing.
+		//H11 failed with ErrorStatus=53 (a CRC mismatch), so at least one of them is load-bearing.
+		//Hunt the algorithm: compute candidate checksums over the real Header page's bytes in
+		//several forms and print them next to the stored fields.
+		string realPath = Environment.GetEnvironmentVariable("MOREDWG_AC21_REAL");
+		if (string.IsNullOrEmpty(realPath))
+		{
+			return;
+		}
+
+		byte[] real = File.ReadAllBytes(realPath);
+		byte[] metadata = decodeFileHeaderPage(real);
+		byte[] pmData = decodeSystemPage(real, BitConverter.ToUInt64(metadata, 0x38),
+			BitConverter.ToUInt64(metadata, 0x50), BitConverter.ToUInt64(metadata, 0x58),
+			BitConverter.ToUInt64(metadata, 0x18));
+		var records = new Dictionary<long, (long off, long size)>();
+		long acc = 0;
+		for (int i = 0; i + 16 <= pmData.Length; i += 16)
+		{
+			records[Math.Abs(BitConverter.ToInt64(pmData, i + 8))] = (acc, BitConverter.ToInt64(pmData, i));
+			acc += BitConverter.ToInt64(pmData, i);
+		}
+
+		(long smOff, _) = records[(long)BitConverter.ToUInt64(metadata, 0xC0)];
+		byte[] smData = decodeSystemPage(real, (ulong)smOff,
+			BitConverter.ToUInt64(metadata, 0xB0), BitConverter.ToUInt64(metadata, 0xC8),
+			BitConverter.ToUInt64(metadata, 0xD8));
+
+		var sb = new StringBuilder();
+		int pos = 0;
+		while (pos + 0x40 <= smData.Length)
+		{
+			long nameLen = BitConverter.ToInt64(smData, pos + 0x20);
+			long numPages = BitConverter.ToInt64(smData, pos + 0x38);
+			pos += 0x40;
+			string name = nameLen > 0 ? Encoding.Unicode.GetString(smData, pos, (int)nameLen).TrimEnd('\0') : "<term>";
+			pos += (int)nameLen;
+			for (int p = 0; p < numPages; p++)
+			{
+				int e = pos + p * 0x38;
+				ulong pId = BitConverter.ToUInt64(smData, e + 0x10);
+				ulong pUn = BitConverter.ToUInt64(smData, e + 0x18);
+				ulong pCo = BitConverter.ToUInt64(smData, e + 0x20);
+				ulong f28 = BitConverter.ToUInt64(smData, e + 0x28);
+				ulong f30 = BitConverter.ToUInt64(smData, e + 0x30);
+				sb.Append($"{name} id={pId} u=0x{pUn:X} c=0x{pCo:X} f28=0x{f28:X} f30=0x{f30:X}");
+
+				if (records.TryGetValue((long)pId, out var rec))
+				{
+					byte[] slot = real.Skip((int)(0x480 + rec.off)).Take((int)rec.size).ToArray();
+					int alignedC = (int)((pCo + 7) & ~7UL);
+					var cs = new Func<byte[], int, ulong>((buf, n) =>
+						ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Checksum.GetCheckSum(0, buf, 0, (uint)n));
+					//candidates over the stored slot bytes and over the compressed payload
+					var rs = ACadSharp.IO.DWG.DwgStreamWriters.Dwg21ReedSolomon.DataPages;
+					int blocks = (alignedC + rs.K - 1) / rs.K;
+					byte[] comp = deinterleave(slot, blocks, rs.K, alignedC);
+					sb.Append($" | compC=0x{cs(comp, (int)pCo):X}");
+					byte[] plain = new byte[pUn];
+					if (pCo != pUn)
+					{
+						new DwgLZ77AC21Decompressor().Decompress(comp, 0U, (uint)pCo, plain);
+					}
+					else
+					{
+						Array.Copy(comp, plain, (int)pUn);
+					}
+
+					sb.Append($" plain0=0x{cs(plain, (int)pUn):X}");
+					//f30 candidates: CRC64 over the compressed payload, several seed conventions.
+					var C = ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.Normal(
+						ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.UpdateSeed1(0, (uint)pCo), comp, 0, (int)pCo);
+					var M = ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.Mirrored(
+						ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.UpdateSeed2(0, (uint)pCo), comp, 0, (int)pCo);
+					var N0 = ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.Normal(0, comp, 0, (int)pCo);
+					var M0 = ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.Mirrored(0, comp, 0, (int)pCo);
+					sb.Append($" crcN=0x{C:X} crcM=0x{M:X} crcN0=0x{N0:X} crcM0=0x{M0:X}");
+					//round two: enc-1 checksum over the padded stored page; f30 over the plain data
+					sb.Append($" slotPad=0x{cs(slot, (int)Math.Min(rec.size, (long)((pUn + 0x1FUL) & ~0x1FUL))):X}");
+					var pN = ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.Normal(
+						ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.UpdateSeed1(0, (uint)pUn), plain, 0, (int)pUn);
+					var pM = ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.Mirrored(
+						ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.UpdateSeed2(0, (uint)pUn), plain, 0, (int)pUn);
+					var pN0 = ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.Normal(0, plain, 0, (int)pUn);
+					var pM0 = ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.Mirrored(0, plain, 0, (int)pUn);
+					sb.Append($" pcrcN=0x{pN:X} pcrcM=0x{pM:X} pcrcN0=0x{pN0:X} pcrcM0=0x{pM0:X}");
+					//round three, the spec's exact recipe: mirrored CRC over the compressed data,
+					//seed = UpdateSeed1(file CrcSeed) - try both seed fields and both lengths.
+					ulong fileSeed = BitConverter.ToUInt64(metadata, 0xF0);
+					var mA = ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.Mirrored(
+						ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.UpdateSeed1(fileSeed, (uint)pCo), comp, 0, (int)pCo);
+					var mB = ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.Mirrored(
+						ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.UpdateSeed1(fileSeed, (uint)pUn), comp, 0, (int)pCo);
+					int alPad = (int)((pCo + 7) & ~7UL);
+					var mC = ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.Mirrored(
+						ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.UpdateSeed1(fileSeed, (uint)alPad), comp, 0, alPad);
+					var mD = ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.Mirrored(
+						ACadSharp.IO.DWG.DwgStreamWriters.Dwg21Crc64.UpdateSeed1(f28, (uint)pCo), comp, 0, (int)pCo);
+					sb.Append($" fileSeed=0x{fileSeed:X} mA=0x{mA:X} mB=0x{mB:X} mC=0x{mC:X} mD=0x{mD:X}");
+					string dump = Environment.GetEnvironmentVariable("MOREDWG_AC21_DUMPDIR");
+					if (!string.IsNullOrEmpty(dump))
+					{
+						File.WriteAllBytes(Path.Combine(dump, $"page_{pId}.comp"), comp.Take((int)pCo).ToArray());
+						File.WriteAllBytes(Path.Combine(dump, $"page_{pId}.plain"), plain);
+						File.AppendAllText(Path.Combine(dump, "pages.txt"),
+							$"{pId} {pUn:X} {pCo:X} {f28:X} {f30:X}" + Environment.NewLine);
+					}
+				}
+
+				sb.Append("\n");
+			}
+
+			pos += 0x38 * (int)numPages;
+		}
+
+		//The MT-stream hypothesis: are the recovered per-page CRC seeds successive draws of the
+		//file's random encoder? Print the first draws for eyeballing against the solved seeds.
+		ulong rngSeed = BitConverter.ToUInt64(metadata, 0x00);
+		var gen = new ACadSharp.IO.DWG.DwgStreamWriters.Dwg21RandomEncoder(rngSeed);
+		sb.Append($"rngSeed=0x{rngSeed:X} draws:");
+		for (int i = 0; i < 40; i++)
+		{
+			sb.Append($" {gen.NextUInt64():X16}");
+		}
+
+		sb.Append("|end");
+		Assert.Fail(sb.ToString());
+	}
+
+	[Fact]
 	public void DiagnosticPairDiff()
 	{
 		string realPath = Environment.GetEnvironmentVariable("MOREDWG_AC21_REAL");

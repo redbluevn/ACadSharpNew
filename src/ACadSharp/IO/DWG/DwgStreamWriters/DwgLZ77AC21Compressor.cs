@@ -19,6 +19,13 @@ namespace ACadSharp.IO.DWG
 	{
 		private static readonly Lazy<int[][]> _permutations = new(calibrate);
 
+		/// <summary>
+		/// When true the stream continues an existing one: the 0x20 short-initial-literal header
+		/// is never emitted (mid-stream, 0x20 would parse as a match opcode), so the first
+		/// literal run is always the explicit form of length 8 or more.
+		/// </summary>
+		public bool MidStream { get; set; }
+
 		public void Compress(byte[] source, int offset, int totalSize, Stream dest)
 		{
 			byte[] data = new byte[totalSize];
@@ -56,7 +63,7 @@ namespace ACadSharp.IO.DWG
 				{
 					output[pendingEmbedIndex] = (byte)(output[pendingEmbedIndex] | count);
 				}
-				else if (!anyMatchEmitted && output.Count == 0 && count < 8)
+				else if (!anyMatchEmitted && output.Count == 0 && count < 8 && !this.MidStream)
 				{
 					//The very start of the stream: the 0x20 short-literal header.
 					output.Add(0x20);
@@ -186,7 +193,8 @@ namespace ACadSharp.IO.DWG
 				//A literal run that a match's low bits cannot carry must reach 8; hold matches
 				//back when accepting one would strand a 1..7 literal with no carrier.
 				int pendingRun = i - literalStart;
-				bool carrierAvailable = pendingEmbedIndex >= 0 || (!anyMatchEmitted && output.Count == 0);
+				bool carrierAvailable = pendingEmbedIndex >= 0
+					|| (!anyMatchEmitted && output.Count == 0 && !this.MidStream);
 				bool literalEncodable = pendingRun == 0 || pendingRun >= 8 || (pendingRun <= 7 && carrierAvailable);
 
 				if (bestLength >= 4 && literalEncodable)

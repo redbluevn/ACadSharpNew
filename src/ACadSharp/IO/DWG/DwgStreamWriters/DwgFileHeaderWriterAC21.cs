@@ -123,7 +123,10 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 	{
 		var rng = new Dwg21RandomEncoder(0x4D6F7265447767UL); //deterministic; stored as RandomSeed
 		var written = new List<WrittenSection>();
-		int nextId = 1;
+		//A minted minimal file from AutoCAD 2027 assigns ids 3.. to the data pages in file
+		//order, the next two to the section map copies, and - after a gap of two - the last two
+		//to the pages map copies; this writer follows that scheme exactly.
+		int nextId = 3;
 
 		//1. Build the data pages in memory first; ids start after the four map pages get theirs
 		//assigned below, so ids are assigned in two passes: data pages first, then the maps -
@@ -144,7 +147,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 			while (dataOffset == 0 || dataOffset < section.Data.Length)
 			{
 				int chunkLength = Math.Min(section.PageMaxSize, section.Data.Length - dataOffset);
-				byte[] pageBytes = this.buildDataPage(section.Data, dataOffset, chunkLength, encoding, rng, out long storedSize, out int compressedLength);
+				byte[] pageBytes = this.buildDataPage(section.Data, dataOffset, chunkLength, encoding, rng, section.PageMaxSize, out long storedSize, out int compressedLength);
 
 				var page = new WrittenPage
 				{
@@ -175,24 +178,27 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		byte[] sectionMapPage = buildSystemPage(sectionMapData, rng,
 			out ulong smComp, out ulong smFactor, out long smStored);
 
-		//3. Pages map (two copies). It lists every page including both of its own copies, and its
-		//stored size depends only on the entry count, so it can be sized before it is filled.
+		//3. Pages map (two copies), after a two-id gap the way a minted real file numbers them.
+		//It lists every page including both of its own copies, and its stored size depends only
+		//on the entry count, so it can be sized before it is filled.
+		nextId += 2;
 		int pagesMapId1 = nextId++;
 		int pagesMapId2 = nextId++;
 		int totalPageCount = dataPageCount + 4;
 		byte[] pagesMapProbe = new byte[totalPageCount * 16];
 		buildSystemPage(pagesMapProbe, null, out _, out _, out long pmStoredProbe);
 
-		//File order, mirroring a real file: pages map 1 at relative 0, then section map 1, then
-		//the data pages, then section map 2 and pages map 2, then the header copy.
+		//File order, mirroring a minted minimal real file: the two pages map copies ADJACENT at
+		//relative offset 0, then the data pages, then the two section map copies at the end,
+		//then the header copy.
 		var fileOrder = new List<(int id, long size)>
 		{
 			(pagesMapId1, pmStoredProbe),
-			(sectionMapId1, smStored),
+			(pagesMapId2, pmStoredProbe),
 		};
 		fileOrder.AddRange(dataPages.Select(d => (d.page.Id, d.page.StoredSize)));
+		fileOrder.Add((sectionMapId1, smStored));
 		fileOrder.Add((sectionMapId2, smStored));
-		fileOrder.Add((pagesMapId2, pmStoredProbe));
 
 		byte[] pagesMapData = new byte[totalPageCount * 16];
 		using (var pm = new MemoryStream(pagesMapData, true))
@@ -215,8 +221,8 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		using var body = new MemoryStream();
 		long pagesMap1Offset = body.Length;
 		body.Write(pagesMapPage, 0, pagesMapPage.Length);
-		long sectionMap1Offset = body.Length;
-		body.Write(sectionMapPage, 0, sectionMapPage.Length);
+		long pagesMap2Offset = body.Length;
+		body.Write(pagesMapPage, 0, pagesMapPage.Length);
 		var pageAbsoluteOffsets = new Dictionary<int, long>();
 		foreach ((WrittenPage page, byte[] bytes) in dataPages)
 		{
@@ -224,9 +230,9 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 			body.Write(bytes, 0, bytes.Length);
 		}
 
+		long sectionMap1Offset = body.Length;
 		body.Write(sectionMapPage, 0, sectionMapPage.Length);
-		long pagesMap2Offset = body.Length;
-		body.Write(pagesMapPage, 0, pagesMapPage.Length);
+		body.Write(sectionMapPage, 0, sectionMapPage.Length);
 		long headerCopyOffset = body.Length;
 
 		//5. File header metadata (0x110) - now every number is known.
@@ -255,7 +261,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		this._stream.Write(headerPage, 0, headerPage.Length);
 	}
 
-	private byte[] buildDataPage(byte[] data, int offset, int length, ulong encoding, Dwg21RandomEncoder rng, out long storedSize, out int compressedLength)
+	private byte[] buildDataPage(byte[] data, int offset, int length, ulong encoding, Dwg21RandomEncoder rng, int pageMaxSize, out long storedSize, out int compressedLength)
 	{
 		if (encoding == 4)
 		{
@@ -296,8 +302,12 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		}
 		else
 		{
+			//Encoding-1 pages are stored raw and padded to the section's page size, the way a
+			//real file stores them - its SummaryInfo slot is the full 0x80, not the 0x46 the
+			//data needs. The section map's per-page size field carries the same padded value,
+			//and a page shorter than that leaves the two maps contradicting each other.
 			compressedLength = length;
-			storedSize = align0x20(length);
+			storedSize = align0x20(Math.Max(length, pageMaxSize));
 			byte[] page = new byte[storedSize];
 			Array.Copy(data, offset, page, 0, length);
 			return page;
@@ -324,15 +334,22 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		long maxPre = maxBlocks * rs.K;
 		while (maxPre < alignedComp)
 		{
-			//The store-only compressor grows the data slightly; grow the page with it.
 			pageSize = align0x20(pageSize + Dwg21ReedSolomon.CodewordSize);
 			maxBlocks = pageSize / Dwg21ReedSolomon.CodewordSize;
 			maxPre = maxBlocks * rs.K;
 		}
 
+		//The Reed-Solomon interleave stride MUST equal the count AutoCAD derives from the page
+		//size (slot / 255) - measured on a real file by patching its SECOND section map copy,
+		//the copy AutoCAD actually reads (patching the first is invisible to it): a page encoded
+		//at a data-derived stride different from slot/255 reads as garbage there. This library's
+		//reader derives the stride from aligned*factor instead, so the page size is chosen to
+		//make BOTH derivations agree: blocks = ceil(aligned*factor / K), page = align32(blocks
+		//* 255), whose floor(/255) is blocks again since the padding is under one codeword.
 		factor = (ulong)(maxPre / alignedComp);
 		long total = alignedComp * (long)factor;
 		int blocks = (int)((total + rs.K - 1) / rs.K);
+		pageSize = align0x20((long)blocks * Dwg21ReedSolomon.CodewordSize);
 
 		byte[] source = new byte[blocks * rs.K];
 		for (int r = 0; r < (int)factor; r++)
