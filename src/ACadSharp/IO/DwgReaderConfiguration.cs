@@ -1,4 +1,6 @@
-﻿namespace ACadSharp.IO
+﻿using System.Collections.Generic;
+
+namespace ACadSharp.IO
 {
 	/// <summary>
 	/// Configuration for reading DWG files.
@@ -48,5 +50,25 @@
 		/// much as of the reader.
 		/// </remarks>
 		public bool ReportUnreadObjectBits { get; set; } = false;
+
+		/// <summary>
+		/// After the document is read, look up the name of every SHAPE entity in the compiled
+		/// shape file (.shx) its style points at, so the entity can be written to DXF - which
+		/// stores a shape by name, where DWG stores only its number. Default: true.
+		/// </summary>
+		/// <remarks>
+		/// The file is searched for by its full recorded path first, then by its file name in
+		/// <see cref="ShapeFontFolders"/>, then next to the drawing being read. A shape whose file
+		/// cannot be found keeps only its number and the reader says so; the DXF writer then
+		/// leaves that entity out with a notification rather than writing a name the shape file
+		/// does not hold, which AutoCAD rejects.
+		/// </remarks>
+		public bool ResolveShapeNames { get; set; } = true;
+
+		/// <summary>
+		/// Folders searched for a shape file (.shx) named by a text style, in order, before the
+		/// folder of the drawing itself. See <see cref="ResolveShapeNames"/>.
+		/// </summary>
+		public List<string> ShapeFontFolders { get; } = new();
 	}
 }

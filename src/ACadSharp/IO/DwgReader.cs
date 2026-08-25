@@ -136,7 +136,108 @@ public class DwgReader : CadReaderBase<DwgReaderConfiguration>
 		//Build the document
 		this._builder.BuildDocument();
 
+		this.resolveShapeNames();
+
 		return this._document;
+	}
+
+	/// <summary>
+	/// DWG stores a SHAPE entity by its number in the shape file and DXF stores it by name, so an
+	/// entity read here cannot be written to DXF until someone opens the .shx both formats point
+	/// at. This does that, so the translation is the reader's job instead of every caller's. A
+	/// file that cannot be found or read costs the names it holds and a warning, never the read.
+	/// </summary>
+	private void resolveShapeNames()
+	{
+		if (!this.Configuration.ResolveShapeNames)
+		{
+			return;
+		}
+
+		var pending = this._document.BlockRecords
+			.SelectMany(b => b.Entities)
+			.OfType<Entities.Shape>()
+			.Where(s => string.IsNullOrEmpty(s.ShapeName)
+				&& !string.IsNullOrEmpty(s.ShapeStyle?.Filename))
+			.GroupBy(s => s.ShapeStyle.Filename, StringComparer.OrdinalIgnoreCase);
+
+		foreach (var group in pending)
+		{
+			string path = this.findShapeFile(group.Key);
+			if (path == null)
+			{
+				this.triggerNotification(
+					$"Shape file '{group.Key}' was not found, so {group.Count()} shape entities keep only their number and cannot be written to DXF. Add its folder to DwgReaderConfiguration.ShapeFontFolders or put the file next to the drawing.",
+					NotificationType.Warning);
+				continue;
+			}
+
+			Dictionary<ushort, string> names;
+			try
+			{
+				names = ShxShapeFile.ReadShapeNames(path);
+			}
+			catch (Exception ex)
+			{
+				this.triggerNotification($"Shape file '{path}' could not be read: {ex.Message}", NotificationType.Warning);
+				continue;
+			}
+
+			foreach (Entities.Shape shape in group)
+			{
+				if (names.TryGetValue(shape.ShapeIndex, out string name))
+				{
+					shape.ShapeName = name;
+				}
+				else
+				{
+					this.triggerNotification(
+						$"Shape {shape.Handle} is number {shape.ShapeIndex}, which '{path}' does not define; it keeps only its number.",
+						NotificationType.Warning);
+				}
+			}
+		}
+	}
+
+	/// <summary>
+	/// The recorded path is tried as it is, then the file name alone is searched in the configured
+	/// folders and next to the drawing - a drawing usually records the absolute path of the machine
+	/// it was made on, which exists nowhere else.
+	/// </summary>
+	private string findShapeFile(string filename)
+	{
+		try
+		{
+			if (Path.IsPathRooted(filename) && File.Exists(filename))
+			{
+				return filename;
+			}
+
+			string baseName = Path.GetFileName(filename);
+			foreach (string folder in this.Configuration.ShapeFontFolders)
+			{
+				string candidate = Path.Combine(folder, baseName);
+				if (File.Exists(candidate))
+				{
+					return candidate;
+				}
+			}
+
+			if (this._fileStream.Stream is FileStream fileStream)
+			{
+				string candidate = Path.Combine(Path.GetDirectoryName(fileStream.Name), baseName);
+				if (File.Exists(candidate))
+				{
+					return candidate;
+				}
+			}
+		}
+		catch (ArgumentException)
+		{
+			//An unusable path in the style is the same as a missing file.
+		}
+
+		return null;
 	}
 
 	/// <inheritdoc/>
