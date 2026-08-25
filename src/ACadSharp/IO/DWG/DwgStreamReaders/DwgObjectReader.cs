@@ -1,4 +1,4 @@
-using ACadSharp.Blocks;
+﻿using ACadSharp.Blocks;
 using ACadSharp.Classes;
 using ACadSharp.Entities;
 using ACadSharp.Entities.AecObjects;
@@ -4085,20 +4085,19 @@ namespace ACadSharp.IO.DWG
 
 		private MultiLeaderObjectContextData readMultiLeaderAnnotContext(MultiLeaderObjectContextData annotContext, CadMLeaderAnnotContextTemplate template)
 		{
-			//	BL	-	Number of leader roots
+			//	BL	-	Number of leader roots. A count of zero means zero: nothing follows it.
+			//	This used to read seven further bits when the count came back zero and then force
+			//	the count to one or two, which made a multileader carrying no leader root
+			//	unreadable - the reader consumed a leader root the writer had never emitted and ran
+			//	off the end of the entity. AutoCAD 2027 settles it: a file this library writes with
+			//	the leader roots stripped from all fifteen multileaders of sample_AC1032 opens,
+			//	audits 0, and AutoCAD's own DXF export of it carries fifteen MULTILEADER entities
+			//	with zero LEADER{ blocks - so a plain BL 0 with nothing after it is what a
+			//	multileader without leaders looks like, and the seven bits were never there.
+			//	Measured over every multileader available here - 15 in each of the seven
+			//	sample_AC10xx drawings and 2 in a client drawing, 107 in all - the count always
+			//	reads 1, so the removed branch never ran on real data.
 			int leaderRootCount = this._objectReader.ReadBitLong();
-			if (leaderRootCount == 0)
-			{
-				bool b0 = this._objectReader.ReadBit();
-				bool b1 = this._objectReader.ReadBit();
-				bool b2 = this._objectReader.ReadBit();
-				bool b3 = this._objectReader.ReadBit();
-				bool b4 = this._objectReader.ReadBit();
-				bool b5 = this._objectReader.ReadBit();
-				bool b6 = this._objectReader.ReadBit();
-
-				leaderRootCount = b5 ? 2 : 1;
-			}
 
 			for (int i = 0; i < leaderRootCount; i++)
 			{

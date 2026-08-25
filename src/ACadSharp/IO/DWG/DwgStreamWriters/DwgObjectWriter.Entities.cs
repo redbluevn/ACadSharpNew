@@ -1649,7 +1649,7 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			this._writer.WriteBitShort(2);
 		}
 
-		writeMultiLeaderAnnotContextSubObject(true, multiLeader.ContextData);
+		writeMultiLeaderAnnotContextSubObject(multiLeader.ContextData);
 
 		//	Multileader Common data
 		//	340 Leader StyleId (handle)
@@ -1757,25 +1757,18 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		}
 	}
 
-	private void writeMultiLeaderAnnotContextSubObject(bool writeLeaderRootsCount, MultiLeaderObjectContextData annotContext)
+	private void writeMultiLeaderAnnotContextSubObject(MultiLeaderObjectContextData annotContext)
 	{
+		//	BL	-	Number of leader roots
+		//	The standalone MLEADEROBJECTCONTEXTDATA object used to take a second path here that
+		//	wrote a zero count followed by seven bits encoding one or two in b5/b6. That mirrored
+		//	the reader's own guess rather than the format, and it could only ever have survived a
+		//	count of one or two. No drawing available here carries such an object - not the seven
+		//	sample_AC10xx drawings, not the seventeen client drawings - so this path is untested by
+		//	real data either way; it is made to match the format the entity path was measured
+		//	against rather than the guess it used to mirror.
 		int leaderRootCount = annotContext.LeaderRoots.Count;
-		if (writeLeaderRootsCount)
-		{
-			//	BL	-	Number of leader roots
-			this._writer.WriteBitLong(leaderRootCount);
-		}
-		else
-		{
-			this._writer.WriteBitLong(0);
-			this._writer.WriteBit(false);    // b0
-			this._writer.WriteBit(false);    // b1
-			this._writer.WriteBit(false);    // b2
-			this._writer.WriteBit(false);    // b3
-			this._writer.WriteBit(false);    // b4
-			this._writer.WriteBit(leaderRootCount == 2);    // b5
-			this._writer.WriteBit(leaderRootCount == 1);    // b6
-		}
+		this._writer.WriteBitLong(leaderRootCount);
 
 		for (int i = 0; i < leaderRootCount; i++)
 		{

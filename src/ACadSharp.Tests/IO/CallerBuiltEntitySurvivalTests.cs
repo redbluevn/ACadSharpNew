@@ -1,4 +1,4 @@
-namespace ACadSharp.Tests.IO;
+﻿namespace ACadSharp.Tests.IO;
 
 using ACadSharp.Entities;
 using ACadSharp.IO;
@@ -107,6 +107,14 @@ public class CallerBuiltEntitySurvivalTests
 			UVector = new XYZ(1, 0, 0),
 			VVector = new XYZ(0, 1, 0),
 		},
+		//A default MultiLeader carries no leader root, which is exactly the shape that used to be
+		//dropped from every DWG. The leader roots themselves are covered version by version in
+		//ADwgKeepsAMultiLeaderBuiltInCode; here it joins the sweep so the DXF side is covered too.
+		["MultiLeader"] = () => new MultiLeader
+		{
+			ArrowheadSize = 3.5,
+			LandingDistance = 7.25,
+		},
 	};
 
 	/// <summary>
@@ -144,6 +152,13 @@ public class CallerBuiltEntitySurvivalTests
 		},
 		["Tolerance"] = e => Assert.Equal("%%v0.5", ((Tolerance)e).Text),
 		["MLine"] = e => Assert.Equal(2, ((MLine)e).Vertices.Count),
+		["MultiLeader"] = e =>
+		{
+			MultiLeader m = (MultiLeader)e;
+			Assert.Equal(3.5, m.ArrowheadSize, 9);
+			Assert.Equal(7.25, m.LandingDistance, 9);
+			Assert.Empty(m.ContextData.LeaderRoots);
+		},
 		["Viewport"] = e =>
 		{
 			Viewport v = (Viewport)e;
@@ -161,28 +176,46 @@ public class CallerBuiltEntitySurvivalTests
 
 	public static IEnumerable<object[]> DxfCases => _cases.Keys.Select(name => new object[] { name });
 
-	[Fact(Skip = "Known defect, reproduction kept: the DWG writer emits a MULTILEADER its own reader cannot parse.")]
-	public void ADwgKeepsAMultiLeaderBuiltInCode()
+	[Theory]
+	[InlineData(ACadVersion.AC1015, 0)]
+	[InlineData(ACadVersion.AC1015, 1)]
+	[InlineData(ACadVersion.AC1015, 3)]
+	[InlineData(ACadVersion.AC1032, 0)]
+	[InlineData(ACadVersion.AC1032, 1)]
+	[InlineData(ACadVersion.AC1032, 3)]
+	public void ADwgKeepsAMultiLeaderBuiltInCode(ACadVersion version, int leaderRoots)
 	{
-		//Writing raises no warning at all, and reading the result back raises
-		//    [Error] Could not read MULTILEADER number 507 with handle: 96
-		//    DwgException: Failed to read ReadBitDouble
-		//which is the reader running off the end of the entity - the writer emits fewer bits than
-		//the reader consumes, the same shape of defect as T73's missing handle. Both AC1015 and
-		//AC1032; the DXF round trip keeps it. Finding the field needs the bit probe of 13 5f/5g.
-		//
-		//Not chased yet, deliberately: MultiLeader is outside the project's 2D scope and the
-		//consuming application never writes DWG at all - it reads DWG and writes DXF - so nothing
-		//downstream is losing multileaders today. Kept as a standing reproduction rather than
-		//deleted, because the next person to touch MULTILEADER should start from a red test.
-		CadDocument doc = new CadDocument(ACadVersion.AC1032);
-		doc.Entities.Add(new MultiLeader());
+		//A MultiLeader built in code starts with no leader roots at all, and that alone used to
+		//lose it: the writer emitted the plain count, the reader read the zero and then consumed
+		//seven bits and a whole leader root that were never written, ran off the end of the entity
+		//and dropped it. The two zero-root cases here are the ones that were red; one and three
+		//roots passed before the fix and are kept as the controls that say the reader still reads
+		//what it always read. What a count of zero means was settled against AutoCAD 2027 rather
+		//than guessed - see the comment in DwgObjectReader.readMultiLeaderAnnotContext.
+		CadDocument doc = new CadDocument(version);
+		MultiLeader multiLeader = new MultiLeader();
+		for (int i = 0; i < leaderRoots; i++)
+		{
+			multiLeader.ContextData.LeaderRoots.Add(new ACadSharp.Objects.MultiLeaderObjectContextData.LeaderRoot
+			{
+				LeaderIndex = i,
+				ConnectionPoint = new XYZ(i, i + 1, 0),
+			});
+		}
+
+		doc.Entities.Add(multiLeader);
 
 		MemoryStream stream = new();
 		DwgWriter.Write(stream, doc);
 
 		CadDocument back = DwgReader.Read(new MemoryStream(stream.ToArray()));
-		Assert.Single(back.Entities.OfType<MultiLeader>());
+		MultiLeader got = Assert.Single(back.Entities.OfType<MultiLeader>());
+		Assert.Equal(leaderRoots, got.ContextData.LeaderRoots.Count);
+		for (int i = 0; i < leaderRoots; i++)
+		{
+			Assert.Equal(i, got.ContextData.LeaderRoots[i].LeaderIndex);
+			Assert.Equal(new XYZ(i, i + 1, 0), got.ContextData.LeaderRoots[i].ConnectionPoint);
+		}
 	}
 
 	[Theory]

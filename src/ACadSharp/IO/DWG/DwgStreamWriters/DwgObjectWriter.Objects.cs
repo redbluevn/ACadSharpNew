@@ -1782,7 +1782,7 @@ internal partial class DwgObjectWriter : DwgSectionIO
 
 	private void writeMultiLeaderAnnotContext(MultiLeaderObjectContextData multiLeaderAnnotContext)
 	{
-		writeMultiLeaderAnnotContextSubObject(false, multiLeaderAnnotContext);
+		writeMultiLeaderAnnotContextSubObject(multiLeaderAnnotContext);
 	}
 
 	private void writeMultiLeaderStyle(MultiLeaderStyle mLeaderStyle)
