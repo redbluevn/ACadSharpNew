@@ -228,6 +228,13 @@ namespace ACadSharp.IO.DWG
 		/// </summary>
 		private long _dataStreamEnd;
 
+		//Where the current object's record body begins in the section stream, and the handle-stream
+		//bit size its R2010+ framing carried - snapshotted by getEntityType so an object the reader
+		//cannot model can be captured verbatim (see readUnknownNonGraphicalObject).
+		private long _currentBodyStartBits;
+
+		private ulong _currentHandleBitSize;
+
 		/// <summary>
 		/// Reports an object whose data stream was not consumed exactly, when the caller asked for it.
 		/// </summary>
@@ -279,6 +286,7 @@ namespace ACadSharp.IO.DWG
 			//Cleared for every object: a boundary left over from the previous one would make
 			//reportUnreadObjectBits measure this object against somebody else's end.
 			this._dataStreamEnd = 0;
+			this._currentHandleBitSize = 0;
 
 			if (this.R2010Plus)
 			{
@@ -286,6 +294,8 @@ namespace ACadSharp.IO.DWG
 				//This includes the padding bits at the end of the handle stream
 				//(the padding bits make sure the object stream ends on a byte boundary).
 				ulong handleSize = this._crcReader.ReadModularChar();
+				this._currentHandleBitSize = handleSize;
+				this._currentBodyStartBits = this._crcReader.PositionInBits();
 
 				//Find the handles offset
 				ulong handleSectionOffset = (ulong)this._crcReader.PositionInBits() + sizeInBits - handleSize;
@@ -312,6 +322,8 @@ namespace ACadSharp.IO.DWG
 			}
 			else
 			{
+				this._currentBodyStartBits = this._crcReader.PositionInBits();
+
 				//Create a handler section reader
 				this._objectReader = this.roleReader(ref this._reusableObjectReader);
 				this._objectReader.SetPositionInBits(this._crcReader.PositionInBits());
@@ -6340,6 +6352,30 @@ namespace ACadSharp.IO.DWG
 			CadUnknownNonGraphicalObjectTemplate template = new CadUnknownNonGraphicalObjectTemplate(obj);
 
 			this.readCommonNonEntityData(template);
+
+			//T5: the record body is captured verbatim, so the writer can put the object back into a
+			//file of the same version instead of dropping it. Measured before building: AutoCAD's
+			//own plain resave of a client drawing keeps all 62,554 of its unknown LS* objects
+			//count-for-count, so dropping them is a real loss, unlike the proxies of T74. Only
+			//captured when the objects are kept at all; the body starts on a byte boundary by
+			//construction of the record framing.
+			if (this._builder.Configuration.KeepUnknownNonGraphicalObjects
+				&& (this._currentBodyStartBits & 7) == 0
+				&& this._size > 0)
+			{
+				long saved = this._memoryStream.Position;
+				this._memoryStream.Position = this._currentBodyStartBits >> 3;
+				byte[] body = new byte[this._size];
+				int read = this._memoryStream.Read(body, 0, body.Length);
+				this._memoryStream.Position = saved;
+
+				if (read == body.Length)
+				{
+					obj.RawObjectBody = body;
+					obj.RawObjectVersion = this._version;
+					obj.RawHandleBitSize = this._currentHandleBitSize;
+				}
+			}
 
 			return template;
 		}

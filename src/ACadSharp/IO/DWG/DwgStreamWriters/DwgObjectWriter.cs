@@ -272,6 +272,44 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		this.Map.Add(cadObject.Handle, position);
 	}
 
+	//T5: whether an unknown object can go back in verbatim. The record layout is version-specific,
+	//so only a body captured at the version being written qualifies; anything else is dropped with
+	//the same notification as before.
+	private bool canWriteRawObject(UnknownNonGraphicalObject unknown)
+	{
+		return unknown.RawObjectBody != null && unknown.RawObjectVersion == this._version;
+	}
+
+	//The captured record body is emitted with freshly built framing - size, the R2010+
+	//handle-stream bit size the original framing carried, and a recomputed CRC. The rest of the
+	//record stays valid because the two things it refers to are preserved by this writer: the
+	//class numbers (DwgClassesWriter writes DxfClass.ClassNumber as read) and the handles (this
+	//writer keeps the handles it was given). Measured need: AutoCAD's own plain resave of a client
+	//drawing keeps all 62,554 of its unknown LS* objects, so dropping them was a real loss.
+	private void writeRawObject(UnknownNonGraphicalObject unknown)
+	{
+		long position = this._stream.Position;
+		CRC8StreamHandler crc = new CRC8StreamHandler(this._stream, 0xC0C1);
+
+		//MS : Size of object, not including the CRC
+		this.writeSize(crc, (uint)unknown.RawObjectBody.Length);
+
+		//R2010+: MC : Size in bits of the handle stream
+		if (this.R2010Plus)
+		{
+			this.writeSizeInBits(crc, unknown.RawHandleBitSize);
+		}
+
+		crc.Write(unknown.RawObjectBody, 0, unknown.RawObjectBody.Length);
+		this._stream.Write(LittleEndianConverter.Instance.GetBytes(crc.Seed), 0, 2);
+
+		this.Map.Add(unknown.Handle, position);
+
+		this.notify(
+			$"Object {unknown.DxfClass?.DxfName ?? "UNKNOWN"} with handle {unknown.Handle} was written back from its raw {unknown.RawObjectVersion} record ({unknown.RawObjectBody.Length} bytes)",
+			NotificationType.None);
+	}
+
 	private void writeAppId(AppId app)
 	{
 		this.writeCommonNonEntityData(app);

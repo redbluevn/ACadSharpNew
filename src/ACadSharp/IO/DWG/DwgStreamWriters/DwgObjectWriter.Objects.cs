@@ -28,6 +28,19 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		return this.skipEntry(entry, out _);
 	}
 
+	//An unknown object is not a type nobody implemented: it is an object whose payload the reader
+	//did not keep, or kept for a different version than the one being written, where its record
+	//layout does not hold. Which of the two is worth saying, because the first has a switch.
+	private void notifyUnknownObjectSkipped(UnknownNonGraphicalObject unknown)
+	{
+		string reason = unknown.RawObjectBody == null
+			? "its content was not kept (see CadReaderConfiguration.KeepUnknownNonGraphicalObjects)"
+			: $"its raw record was read from {unknown.RawObjectVersion} and the record layout does not carry across versions";
+		this.notify(
+			$"Object {unknown.DxfClass?.DxfName ?? "UNKNOWN"} with handle {unknown.Handle} was read as an unknown object and cannot be written: {reason}",
+			NotificationType.NotImplemented);
+	}
+
 	private bool skipEntry(NonGraphicalObject entry, out bool notify)
 	{
 		if (!entry.IsValid(CadFileFormat.DWG, this._version))
@@ -49,7 +62,9 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			case AecWallStyle:
 			case AecCleanupGroup:
 			case AecBinRecord:
-			case UnknownNonGraphicalObject:
+			//An unknown object whose raw record was captured at the version being written goes
+			//back in verbatim - see writeRawObject; every other unknown is still skipped.
+			case UnknownNonGraphicalObject unknownObject when !this.canWriteRawObject(unknownObject):
 			case VisualStyle visualStyle when !this.canWriteVisualStyle(visualStyle):
 			case ProxyObject:
 			case BlockReferenceObjectContextData:
@@ -868,6 +883,15 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		{
 			if (this.skipEntry(item.Value))
 			{
+				//Entries are filtered here, before they ever reach writeObject, so an unknown
+				//object that cannot go back in has to say so here - the message in writeObject
+				//never fires for a dictionary entry. Other skipped types stay silent on this
+				//path, as they always were.
+				if (item.Value is UnknownNonGraphicalObject unknownEntry)
+				{
+					this.notifyUnknownObjectSkipped(unknownEntry);
+				}
+
 				continue;
 			}
 
@@ -1907,18 +1931,25 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			if (notify)
 			{
 				//An unknown object is a special case: it is not a type nobody implemented, it is an
-				//object whose payload the reader did not keep, so say which class is being lost.
+				//object whose payload the reader did not keep - or kept for a different version
+				//than the one being written, where its record layout does not hold.
 				if (obj is UnknownNonGraphicalObject unknown)
 				{
-					this.notify(
-						$"Object {unknown.DxfClass?.DxfName ?? "UNKNOWN"} with handle {unknown.Handle} was read as an unknown object, its content was not kept and it cannot be written",
-						NotificationType.NotImplemented);
+					this.notifyUnknownObjectSkipped(unknown);
 				}
 				else
 				{
 					this.notify($"Object type not implemented {obj.GetType().FullName}", NotificationType.NotImplemented);
 				}
 			}
+			return;
+		}
+
+		//T5: an unknown object with its raw record captured at this version bypasses the normal
+		//body building entirely - the record goes back byte for byte.
+		if (obj is UnknownNonGraphicalObject rawUnknown)
+		{
+			this.writeRawObject(rawUnknown);
 			return;
 		}
 
