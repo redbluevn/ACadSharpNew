@@ -1,4 +1,4 @@
-using ACadSharp.Entities;
+﻿using ACadSharp.Entities;
 using ACadSharp.IO;
 using ACadSharp.Objects;
 using CSMath;
@@ -64,6 +64,74 @@ public class DimensionAssociationWriteTests
 
 		DimensionAssociation after = this.association(DxfReader.Read(new MemoryStream(stream.ToArray())));
 		this.assertSame(before, after);
+	}
+
+	[Fact]
+	public void SubentTypeCarriesAutoCadsOwnNumbers()
+	{
+		//These are AcDb::SubentType from the ObjectARX header acdb.h, and they are asserted rather
+		//than merely written down because the enum was wrong for as long as it existed: Edge and
+		//Face were the wrong way round and everything past 2 was missing. The drawing that exposed
+		//it stores 2 on all seven of its associations, every one of them attached to a Line or an
+		//LwPolyline - so 2 has to mean edge, and it used to come back named Face.
+		Assert.Equal(0, (short)SubentType.None);
+		Assert.Equal(1, (short)SubentType.Face);
+		Assert.Equal(2, (short)SubentType.Edge);
+		Assert.Equal(3, (short)SubentType.Vertex);
+		Assert.Equal(4, (short)SubentType.MlineSubentCache);
+		Assert.Equal(5, (short)SubentType.Class);
+		Assert.Equal(6, (short)SubentType.Axis);
+		Assert.Equal(7, (short)SubentType.Silhouette);
+
+		//The value the production drawing actually carries, named.
+		Assert.Equal(SubentType.Edge, (SubentType)MeasuredSubentType);
+	}
+
+	[Theory]
+	[InlineData(SubentType.None)]
+	[InlineData(SubentType.Face)]
+	[InlineData(SubentType.Edge)]
+	[InlineData(SubentType.Vertex)]
+	[InlineData(SubentType.MlineSubentCache)]
+	[InlineData(SubentType.Class)]
+	[InlineData(SubentType.Axis)]
+	[InlineData(SubentType.Silhouette)]
+	public void EverySubentTypeSurvivesBothWriters(SubentType type)
+	{
+		//Renaming an enum cannot change what lands in a file - both sides cast through short - but
+		//that is the claim being made, so it is measured rather than asserted in a comment. The
+		//values above 2 had no test at all before, and nothing said whether the writers passed them
+		//through or clamped them.
+		//
+		//IntersectionSubType is deliberately not asserted here. Neither writer emits it: the DWG
+		//writer writes a zero-length intersection subentity path on purpose, and the DXF writer has
+		//no 74 at all. Asserting it would be testing a gap that has nothing to do with this enum,
+		//and the first draft of this test did exactly that and went red on seven of eight cases.
+		foreach (bool dwg in new[] { true, false })
+		{
+			CadDocument doc = this.document(out DimensionAssociation before);
+			doc.Header.Version = ACadVersion.AC1032;
+			before.FirstPointRef.SubentType = type;
+
+			using MemoryStream stream = new();
+			if (dwg)
+			{
+				using DwgWriter writer = new(stream, doc);
+				writer.Write();
+			}
+			else
+			{
+				using DxfWriter writer = new(stream, doc, false);
+				writer.Write();
+			}
+
+			CadDocument back = dwg
+				? DwgReader.Read(new MemoryStream(stream.ToArray()))
+				: DxfReader.Read(new MemoryStream(stream.ToArray()));
+			DimensionAssociation after = this.association(back);
+
+			Assert.Equal(type, after.FirstPointRef.SubentType);
+		}
 	}
 
 	[Fact]

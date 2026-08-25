@@ -28,10 +28,14 @@ public partial class DimensionAssociation
 		public XYZ OsnapPoint { get; set; }
 
 		/// <summary>
-		/// Gets or sets the type of the rotated dimension, indicating whether it is parallel or perpendicular.
+		/// Gets or sets which part of the referenced entity this osnap point attaches to.
 		/// </summary>
+		/// <remarks>
+		/// The previous summary here described a rotated dimension being parallel or perpendicular,
+		/// which belongs to a different field entirely.
+		/// </remarks>
 		[DxfCodeValue(73)]
-		public SubentType SubentType { get; set; } = SubentType.Unknown;
+		public SubentType SubentType { get; set; } = SubentType.None;
 
 		/// <summary>
 		/// Gets or sets the graphics system marker (GsMarker) associated with the main object.
@@ -42,6 +46,9 @@ public partial class DimensionAssociation
 		//332
 		//ID of intersection object (geometry)
 
+		/// <summary>
+		/// Gets or sets which part of the intersection object the osnap point attaches to.
+		/// </summary>
 		[DxfCodeValue(74)]
 		public SubentType IntersectionSubType { get; set; }
 
