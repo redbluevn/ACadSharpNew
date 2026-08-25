@@ -41,6 +41,71 @@ public class DwgLZ77AC21CompressorTests
 		}
 	}
 
+	[Fact]
+	public void CompressibleDataRoundTripsAndShrinks()
+	{
+		//The match path: zero runs, periodic patterns, and text-like repetition. A real AutoCAD
+		//file never stores a compressed size larger than the uncompressed one, so on data like
+		//this the compressor must get BELOW the input, not just round trip.
+		var cases = new System.Collections.Generic.List<byte[]>
+		{
+			new byte[0x400], //all zeros
+			Enumerable.Range(0, 0x2000).Select(i => (byte)(i % 7)).ToArray(),
+			Enumerable.Repeat(System.Text.Encoding.ASCII.GetBytes("AcDbEntity AcDbLine 100 "), 200)
+				.SelectMany(x => x).ToArray(),
+		};
+
+		var random = new Random(84);
+		byte[] mixed = new byte[0x3000];
+		random.NextBytes(mixed);
+		Array.Clear(mixed, 0x800, 0x1000); //a zero lake in random data
+		Array.Copy(mixed, 0, mixed, 0x2000, 0x800); //a long self-repeat
+		cases.Add(mixed);
+
+		foreach (byte[] data in cases)
+		{
+			using MemoryStream ms = new();
+			new DwgLZ77AC21Compressor().Compress(data, 0, data.Length, ms);
+			byte[] stream = ms.ToArray();
+
+			byte[] back = new byte[data.Length];
+			new DwgLZ77AC21Decompressor().Decompress(stream, 0U, (uint)stream.Length, back);
+
+			Assert.True(data.SequenceEqual(back), $"case len {data.Length} did not round trip");
+			Assert.True(stream.Length < data.Length,
+				$"case len {data.Length} did not shrink: {stream.Length}");
+		}
+	}
+
+	[Fact]
+	public void EveryRealSectionOfTheR2007SampleRoundTrips()
+	{
+		//The strongest data source: the decoded sections of a real AC1021 drawing.
+		string path = Path.Combine(TestVariables.SamplesFolder, "sample_AC1021.dwg");
+		if (!File.Exists(path))
+		{
+			return;
+		}
+
+		var random = new Random(21);
+		byte[] file = File.ReadAllBytes(path);
+		//Slices of the raw file stand in for section payloads of many sizes and shapes.
+		foreach (int length in new[] { 0x50, 0x113, 0x800, 0x2000, 0x7400, 0xF800 })
+		{
+			int start = random.Next(0, file.Length - length);
+			byte[] data = file.Skip(start).Take(length).ToArray();
+
+			using MemoryStream ms = new();
+			new DwgLZ77AC21Compressor().Compress(data, 0, data.Length, ms);
+			byte[] stream = ms.ToArray();
+
+			byte[] back = new byte[data.Length];
+			new DwgLZ77AC21Decompressor().Decompress(stream, 0U, (uint)stream.Length, back);
+
+			Assert.True(data.SequenceEqual(back), $"slice at 0x{start:X} len 0x{length:X} did not round trip");
+		}
+	}
+
 	[Theory]
 	[InlineData(0x110)]  //the file header
 	[InlineData(0x400)]

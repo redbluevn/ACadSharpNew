@@ -81,13 +81,41 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 	{
 	}
 
+	//The canonical page size per section, from the specification's table (5.2) and confirmed by
+	//dumping real files: AutoCAD writes these exact values into the section map's Max size field,
+	//and this writer follows them instead of the caller's default page size.
+	private static readonly Dictionary<string, int> _canonicalPageSize = new()
+	{
+		[DwgSectionDefinition.AppInfo] = 0x300,
+		[DwgSectionDefinition.Preview] = 0x400,
+		[DwgSectionDefinition.SummaryInfo] = 0x80,
+		[DwgSectionDefinition.RevHistory] = 0x1000,
+		[DwgSectionDefinition.AcDbObjects] = 0xF800,
+		[DwgSectionDefinition.ObjFreeSpace] = 0xF800,
+		[DwgSectionDefinition.Template] = 0x400,
+		[DwgSectionDefinition.Handles] = 0xF800,
+		[DwgSectionDefinition.Classes] = 0xF800,
+		[DwgSectionDefinition.AuxHeader] = 0x800,
+		[DwgSectionDefinition.Header] = 0x800,
+		[DwgSectionDefinition.FileDepList] = 0x100,
+	};
+
 	public override void AddSection(string name, MemoryStream stream, bool isCompressed, int decompsize = 0x7400)
 	{
+		byte[] data = stream.ToArray();
+		int pageMax = _canonicalPageSize.TryGetValue(name, out int canonical) ? canonical : decompsize;
+
+		//The Preview page grows with the image, rounded up, the way the specification sizes it.
+		if (name == DwgSectionDefinition.Preview && data.Length > pageMax)
+		{
+			pageMax = (data.Length + 0x1F) & ~0x1F;
+		}
+
 		this._sections.Add(new PendingSection
 		{
 			Name = name,
-			Data = stream.ToArray(),
-			PageMaxSize = decompsize,
+			Data = data,
+			PageMaxSize = pageMax,
 		});
 	}
 
@@ -231,10 +259,10 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 	{
 		if (encoding == 4)
 		{
-			//The page is store-only compressed first: equal compressed/uncompressed sizes are the
-			//no-decompression signal, and whether they are ALSO a no-RS signal to AutoCAD is
-			//unsettled - a store-only stream keeps the sizes unequal, which every reader
-			//interpretation treats the same way: RS decode, then decompress.
+			//Really compressed, the way every AutoCAD-written page is (a real file never stores
+			//a compressed size larger than the uncompressed one). When the data will not shrink,
+			//the raw bytes go in with equal sizes - the shape a real file's tiny Template page
+			//carries - and the Reed-Solomon layer applies either way.
 			byte[] compressed;
 			using (var ms = new MemoryStream())
 			{
@@ -242,12 +270,23 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 				compressed = ms.ToArray();
 			}
 
-			compressedLength = compressed.Length;
+			byte[] payload;
+			if (compressed.Length < length)
+			{
+				payload = compressed;
+			}
+			else
+			{
+				payload = new byte[length];
+				Array.Copy(data, offset, payload, 0, length);
+			}
+
+			compressedLength = payload.Length;
 			var rs = Dwg21ReedSolomon.DataPages;
-			int aligned = (compressed.Length + 7) & ~7;
+			int aligned = (payload.Length + 7) & ~7;
 			int blocks = (aligned + rs.K - 1) / rs.K;
 			byte[] source = new byte[blocks * rs.K];
-			compressed.CopyTo(source, 0);
+			payload.CopyTo(source, 0);
 			byte[] encoded = rs.EncodeInterleaved(source, blocks);
 
 			storedSize = align0x20(encoded.Length);
