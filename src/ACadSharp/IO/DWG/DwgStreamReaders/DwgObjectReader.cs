@@ -240,7 +240,7 @@ namespace ACadSharp.IO.DWG
 		/// </remarks>
 		private void reportUnreadObjectBits(ObjectType type, ulong handle)
 		{
-			if (!this._builder.Configuration.ReportUnreadObjectBits || !this.R2010Plus || this._dataStreamEnd <= 0)
+			if (!this._builder.Configuration.ReportUnreadObjectBits || this._dataStreamEnd <= 0)
 			{
 				return;
 			}
@@ -276,6 +276,10 @@ namespace ACadSharp.IO.DWG
 			uint sizeInBits = (uint)(this._size << 3);
 
 			//R2010+:
+			//Cleared for every object: a boundary left over from the previous one would make
+			//reportUnreadObjectBits measure this object against somebody else's end.
+			this._dataStreamEnd = 0;
+
 			if (this.R2010Plus)
 			{
 				//MC : Size in bits of the handle stream (unsigned, 0x40 is not interpreted as sign).
@@ -806,8 +810,14 @@ namespace ACadSharp.IO.DWG
 			if (this._version == ACadVersion.AC1021)
 			{
 				this._textReader = this.roleReader(ref this._reusableTextReader);
-				//"endbit" of the pre-handles section.
-				this._textReader.SetPositionByFlag(size + this._objectInitialPos - 1);
+				//"endbit" of the pre-handles section. The return value is where the string stream
+				//starts, which is where the data stream really ends - see reportUnreadObjectBits.
+				this._dataStreamEnd = this._textReader.SetPositionByFlag(size + this._objectInitialPos - 1);
+			}
+			else
+			{
+				//Before R2007 there is no string stream, so the data runs right up to the handles.
+				this._dataStreamEnd = size + this._objectInitialPos;
 			}
 
 			this._mergedReaders = new DwgMergedReader(this._objectReader, this._textReader, this._handlesReader);
@@ -3658,8 +3668,19 @@ namespace ACadSharp.IO.DWG
 				{
 					var silhouette = new ModelerGeometry.Silhouette();
 
-					//VP id BL X
-					silhouette.ViewportId = this._mergedReaders.ReadBitLongLong();
+					//VP id BL X - a bit long, as the line above has always said. It was read as a
+					//bit long long, which is a three bit length followed by that many bytes, so a
+					//silhouette whose viewport id is zero made the reader take the next five bytes
+					//as a length-prefixed number and everything after it was read from the wrong
+					//place. Nothing complained: a DWG object is length delimited, so the reader
+					//simply ran past the end of the entity in silence.
+					//
+					//Measured on three client drawings at R2007 that carry one silhouette per
+					//region - 23 regions between them - each overrunning by 180 to 444 bits. The
+					//trailing bits decode exactly with a bit long: ten two bit zero codes for the
+					//viewport id and the three vectors, then the two flags, the ACIS empty bit and
+					//the trailing unknown, and the object ends on the bit it should.
+					silhouette.ViewportId = this._mergedReaders.ReadBitLong();
 					//VP Target 3BD X
 					silhouette.ViewportTarget = this._mergedReaders.Read3BitDouble();
 					//VP dir. From target 3BD X

@@ -36,6 +36,9 @@ public class DwgObjectBoundaryTests
 		"ACDBPERSSUBENTMANAGER",
 		"ACDB_TEXTOBJECTCONTEXTDATA_CLASS",
 		"WIPEOUTVARIABLES",
+		//Only in the older samples, and undecoded there for the same reason.
+		"CELLSTYLEMAP",
+		"ACDBDICTIONARYWDFLT",
 	};
 
 	public DwgObjectBoundaryTests(ITestOutputHelper output)
@@ -43,8 +46,14 @@ public class DwgObjectBoundaryTests
 		this._output = output;
 	}
 
+	//Every version whose object header names the boundary. R2007 and R2000-R2004 were added on
+	//2026-08-25, when extending the check to them found a REGION silhouette being read with the
+	//wrong bit code on three client drawings.
 	public static IEnumerable<object[]> Samples => new[]
 	{
+		new object[] { "sample_AC1015.dwg" },
+		new object[] { "sample_AC1018.dwg" },
+		new object[] { "sample_AC1021.dwg" },
 		new object[] { "sample_AC1024.dwg" },
 		new object[] { "sample_AC1027.dwg" },
 		new object[] { "sample_AC1032.dwg" },

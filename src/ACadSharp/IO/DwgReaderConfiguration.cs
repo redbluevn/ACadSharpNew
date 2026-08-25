@@ -41,9 +41,11 @@
 		/// point on is silent too. Turning this on makes the reader say so, and it is how a missing
 		/// or surplus field is found without knowing in advance which one it is.
 		///
-		/// Only R2010 and later are reported, because only there does the object header name the
-		/// boundary directly. It is off by default: the unimplemented classes a drawing happens to
-		/// carry each raise one, so the count is a property of the drawing as much as of the reader.
+		/// Reported from R2000 on, which is every version whose object header names the boundary:
+		/// R2010 and later carry it in the header itself, and R2000 through R2007 give it as the
+		/// size of the pre-handles section. It is off by default: the unimplemented classes a
+		/// drawing happens to carry each raise one, so the count is a property of the drawing as
+		/// much as of the reader.
 		/// </remarks>
 		public bool ReportUnreadObjectBits { get; set; } = false;
 	}
