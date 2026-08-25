@@ -3700,6 +3700,25 @@ namespace ACadSharp.IO.DWG
 					silhouette.ViewportPerspective = this._mergedReaders.ReadBit();
 
 					//IsoLines present B X If true, isoline data is present.
+					//
+					//	The specification does not list this bit: it puts "Num Wires BL" here
+					//	unconditionally. The bit is real, and the arithmetic of a silhouette record
+					//	proves it: the reading the specification describes does not fit the object,
+					//	and this one fits it exactly.
+					//	Measured on an R2007 client drawing, against the boundary the object itself
+					//	declares:
+					//
+					//	  a silhouette record consumes 22 bits - VP id BL 0 as "10" (2), three
+					//	  3BD of zeroes as "10" x 9 (18), VP perspective (1), and this bit (1)
+					//
+					//	Read the last two bits as "Num Wires BL" = 0 instead and the record is 23
+					//	bits, at which point nothing lands on the boundary: a region carrying one
+					//	silhouette has 35 bits left before the count, which is 10 (the count, a BL
+					//	with a one byte payload) + 22 + 1 (ACIS Empty) + 2 (the R2007+ unknown BL),
+					//	and the 23 bit reading over-runs the object by one bit. The same holds for
+					//	the regions of that drawing that carry 815 silhouettes: 17967 bits left,
+					//	34 for the count and 815 x 22 for the records, ending exactly 3 bits before
+					//	the end - while 815 x 23 does not even divide into what is there.
 					if (this._mergedReaders.ReadBit())
 					{
 						//Num Wires BL X
