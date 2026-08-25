@@ -1854,9 +1854,36 @@ namespace ACadSharp.IO.DWG
 			//Blocks: 	Numentries BL 70 Doesn't count *MODEL_SPACE and *PAPER_SPACE
 			//Layers: 	Numentries BL 70 Counts layer "0", too
 			int numentries = this._objectReader.ReadBitLong();
+
+			//R2000+, and only for the dimension style table: an undocumented count of additional
+			//hard handles that follow the entry handles. The writer here has always written this
+			//byte - as a literal zero - while the reader never read it, so the reader ended eight
+			//bits short of the end of the object on every drawing that has a dimension style table.
+			//Harmless in itself, since nothing follows it in the data stream, but it is the reader
+			//being out of contract with the format, and it is why any such handle a file carries
+			//was dropped without a word.
+			int moreHandles = 0;
+			if (this.R2000Plus && template.CadObject is DimensionStylesTable)
+			{
+				moreHandles = this._objectReader.ReadByte();
+			}
+
 			for (int i = 0; i < numentries; ++i)
 				//numentries handles in the file (soft owner)
 				template.EntryHandles.Add(this.handleReference());
+
+			if (moreHandles > 0)
+			{
+				//Read rather than skipped, so the handle stream stays where the format says it is.
+				//They are not kept: the table has nowhere to put them and no drawing measured here
+				//has any, so inventing a property for them would be inventing data. Say so instead.
+				for (int i = 0; i < moreHandles; ++i)
+				{
+					this.handleReference();
+				}
+
+				this.notify($"Dimension style table carries {moreHandles} additional hard handle(s), which this library does not model; they are not written back", NotificationType.Warning);
+			}
 
 			return template;
 		}

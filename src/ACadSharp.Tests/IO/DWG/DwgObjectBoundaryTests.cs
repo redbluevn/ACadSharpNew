@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -36,8 +36,6 @@ public class DwgObjectBoundaryTests
 		"ACDBPERSSUBENTMANAGER",
 		"ACDB_TEXTOBJECTCONTEXTDATA_CLASS",
 		"WIPEOUTVARIABLES",
-		//A table control object whose trailing fields are not modelled.
-		"DIMSTYLE_CONTROL_OBJ",
 	};
 
 	public DwgObjectBoundaryTests(ITestOutputHelper output)
