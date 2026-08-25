@@ -3668,19 +3668,28 @@ namespace ACadSharp.IO.DWG
 				{
 					var silhouette = new ModelerGeometry.Silhouette();
 
-					//VP id BL X - a bit long, as the line above has always said. It was read as a
-					//bit long long, which is a three bit length followed by that many bytes, so a
-					//silhouette whose viewport id is zero made the reader take the next five bytes
-					//as a length-prefixed number and everything after it was read from the wrong
-					//place. Nothing complained: a DWG object is length delimited, so the reader
-					//simply ran past the end of the entity in silence.
+					//	VP id: a bit long before R2010, a bit long long from R2010 - the same
+					//	substitution the proxy entity's graphic image size makes at exactly that
+					//	version, which is the only other bit long long this reader has.
 					//
-					//Measured on three client drawings at R2007 that carry one silhouette per
-					//region - 23 regions between them - each overrunning by 180 to 444 bits. The
-					//trailing bits decode exactly with a bit long: ten two bit zero codes for the
-					//viewport id and the three vectors, then the two flags, the ACIS empty bit and
-					//the trailing unknown, and the object ends on the bit it should.
-					silhouette.ViewportId = this._mergedReaders.ReadBitLong();
+					//	Read as a bit long long at every version, it cost 816 regions across six
+					//	client drawings at R2007: a bit long long is a three bit length followed by
+					//	that many bytes, so a viewport id of zero made the reader take the next five
+					//	bytes as a length-prefixed number, run past the end of the entity, and throw
+					//	- and the failsafe then dropped the entity. Read as a bit long at every
+					//	version instead, an R2018 drawing loses its region the same way.
+					//
+					//	Where between R2010 and R2013 the change really falls is NOT settled by any
+					//	drawing here: nothing at AC1024 or AC1027 carries a silhouette, and asking
+					//	AutoCAD to save an R2018 drawing that has one down to R2010 drops it. R2010
+					//	is chosen because that is where this format replaces a fixed-width count
+					//	with a bit long long elsewhere. A drawing at AC1024 or AC1027 with a
+					//	silhouette would settle it; until one turns up, a wrong guess here is loud
+					//	rather than silent, because both failure modes end in an over-read or a
+					//	failed read that the boundary check reports.
+					silhouette.ViewportId = this.R2010Plus
+						? this._mergedReaders.ReadBitLongLong()
+						: this._mergedReaders.ReadBitLong();
 					//VP Target 3BD X
 					silhouette.ViewportTarget = this._mergedReaders.Read3BitDouble();
 					//VP dir. From target 3BD X
