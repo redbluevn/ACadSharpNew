@@ -29,5 +29,22 @@
 		/// default: true
 		/// </value>
 		public bool IgnoreProxyGraphics { get; set; } = true;
+
+		/// <summary>
+		/// If set to true the reader reports every object whose data stream it did not consume
+		/// exactly, default value is set to false.
+		/// </summary>
+		/// <remarks>
+		/// A DWG object is length delimited, so a reader that stops short of the end, or runs past
+		/// it into the string stream, is not punished by the format: the next object is found by
+		/// offset either way and the mistake is silent. Every field the reader gets wrong from that
+		/// point on is silent too. Turning this on makes the reader say so, and it is how a missing
+		/// or surplus field is found without knowing in advance which one it is.
+		///
+		/// Only R2010 and later are reported, because only there does the object header name the
+		/// boundary directly. It is off by default: the unimplemented classes a drawing happens to
+		/// carry each raise one, so the count is a property of the drawing as much as of the reader.
+		/// </remarks>
+		public bool ReportUnreadObjectBits { get; set; } = false;
 	}
 }

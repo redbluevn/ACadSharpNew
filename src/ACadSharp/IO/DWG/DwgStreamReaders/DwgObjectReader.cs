@@ -199,6 +199,8 @@ namespace ACadSharp.IO.DWG
 					continue;
 				}
 
+				this.reportUnreadObjectBits(type, handle);
+
 				//Add the template to the list to be processed
 				if (template == null)
 					continue;
@@ -218,6 +220,43 @@ namespace ACadSharp.IO.DWG
 			}
 
 			return cached;
+		}
+
+		/// <summary>
+		/// Where the data stream of the object being read ends, for R2010 and later. Zero when the
+		/// boundary is not known.
+		/// </summary>
+		private long _dataStreamEnd;
+
+		/// <summary>
+		/// Reports an object whose data stream was not consumed exactly, when the caller asked for it.
+		/// </summary>
+		/// <remarks>
+		/// A positive count is data the reader never looked at - a field it does not know about, or
+		/// one it skipped. A negative count means it read past the end of its own data and into the
+		/// string stream, which can still produce right-looking values when the string stream happens
+		/// to hold what was wanted, and is how PDFDEFINITION got away with reading its file name from
+		/// the wrong stream for as long as it did.
+		/// </remarks>
+		private void reportUnreadObjectBits(ObjectType type, ulong handle)
+		{
+			if (!this._builder.Configuration.ReportUnreadObjectBits || !this.R2010Plus || this._dataStreamEnd <= 0)
+			{
+				return;
+			}
+
+			long unread = this._dataStreamEnd - this._objectReader.PositionInBits();
+			if (unread == 0)
+			{
+				return;
+			}
+
+			string name = this._classes.TryGetValue((short)type, out DxfClass dxf) ? dxf.DxfName : type.ToString();
+			string what = unread > 0
+				? $"{unread} bits of its data were never read"
+				: $"it read {-unread} bits past the end of its data";
+
+			this._builder.Notify($"{name} with handle {handle}: {what}", NotificationType.Warning);
 		}
 
 		private ObjectType getEntityType(long offset)
@@ -261,7 +300,9 @@ namespace ACadSharp.IO.DWG
 
 				//Create a text section reader
 				this._textReader = this.roleReader(ref this._reusableTextReader);
-				this._textReader.SetPositionByFlag((long)handleSectionOffset - 1);
+				//The return value is the start of the string stream, which is where the data stream
+				//really ends - see reportUnreadObjectBits.
+				this._dataStreamEnd = this._textReader.SetPositionByFlag((long)handleSectionOffset - 1);
 
 				this._mergedReaders = new DwgMergedReader(this._objectReader, this._textReader, this._handlesReader);
 			}
@@ -4693,8 +4734,14 @@ namespace ACadSharp.IO.DWG
 
 			this.readCommonNonEntityData(template);
 
-			definition.File = this._objectReader.ReadVariableText();
-			definition.Page = this._objectReader.ReadVariableText();
+			//Both strings live in the string stream from R2007 on, which is what every other reader
+			//here uses _textReader for. Reading them from _objectReader produced the right values
+			//anyway - this object has nothing in its data stream after the common data, so the
+			//object reader simply carried on into the string stream and found them - while ending
+			//372 bits past the end of its own data. Right by luck, and only for as long as no field
+			//is ever added after them.
+			definition.File = this._textReader.ReadVariableText();
+			definition.Page = this._textReader.ReadVariableText();
 
 			return template;
 		}
