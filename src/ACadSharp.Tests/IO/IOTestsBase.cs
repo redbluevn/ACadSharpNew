@@ -144,7 +144,8 @@ public abstract class IOTestsBase
 			case ACadVersion.AC1018:
 				return true;
 			case ACadVersion.AC1021:
-				return false;
+				//T87: the R2007 container is written now.
+				return true;
 			case ACadVersion.AC1024:
 				return true;
 			case ACadVersion.AC1027:
