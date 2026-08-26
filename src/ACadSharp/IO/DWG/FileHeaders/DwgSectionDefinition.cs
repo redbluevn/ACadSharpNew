@@ -16,6 +16,12 @@ namespace ACadSharp.IO.DWG
 
 		public const string FileDepList = "AcDb:FileDepList";
 
+		/// <summary>
+		/// Lists the files the drawing depends on. An R2007 drawing does not open without
+		/// this section present, whatever it holds.
+		/// </summary>
+		public const string XrefManifest = "AcDb:XrefManifest";
+
 		public const string Handles = "AcDb:Handles";
 
 		public const string Header = "AcDb:Header";

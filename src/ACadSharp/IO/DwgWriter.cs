@@ -8,6 +8,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using CSUtilities.Converters;
+using System.Text;
 
 namespace ACadSharp.IO;
 
@@ -113,6 +115,7 @@ public class DwgWriter : CadWriterBase<DwgWriterConfiguration>
 		//this.writeVBASection();
 		this.writeAppInfo();
 		this.writeFileDepList();
+		this.writeXrefManifest();
 		this.writeRevHistory();
 		//this.writeSecurity();
 		this.writeAuxHeader();
@@ -240,6 +243,26 @@ public class DwgWriter : CadWriterBase<DwgWriterConfiguration>
 		writer.Write();
 
 		this._fileHeaderWriter.AddSection(DwgSectionDefinition.Classes, stream, true);
+	}
+
+	private void writeXrefManifest()
+	{
+		//AutoCAD will not open an R2007 drawing that has no AcDb:XrefManifest section. What the
+		//section holds does not matter - a real file's own manifest, overwritten with zeroes,
+		//still opens - so an empty, well-formed manifest is enough. Real files carry JSON behind
+		//an Int64 byte count, listing the paths the drawing depends on.
+		if (this._fileHeader.AcadVersion != ACadVersion.AC1021)
+		{
+			return;
+		}
+
+		byte[] json = Encoding.UTF8.GetBytes(
+			"{\n    \"xrefs\": [\n    ],\n    \"version\": \"1.0\",\n    \"wasFullSave\": \"true\"\n}\n");
+		MemoryStream stream = new MemoryStream();
+		stream.Write(LittleEndianConverter.Instance.GetBytes((long)json.Length), 0, 8);
+		stream.Write(json, 0, json.Length);
+
+		this._fileHeaderWriter.AddSection(DwgSectionDefinition.XrefManifest, stream, true);
 	}
 
 	private void writeFileDepList()

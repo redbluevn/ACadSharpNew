@@ -64,6 +64,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 	private static readonly Dictionary<string, (ulong hash, ulong encoding)> _sectionProperties = new()
 	{
 		[DwgSectionDefinition.FileDepList] = (0x6c4205ca, 1),
+		[DwgSectionDefinition.XrefManifest] = (0x7ae40662, 4),
 		[DwgSectionDefinition.AppInfo] = (0x3fa0043e, 1),
 		[DwgSectionDefinition.Preview] = (0x40aa0473, 1),
 		[DwgSectionDefinition.SummaryInfo] = (0x717a060f, 1),
@@ -99,6 +100,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		[DwgSectionDefinition.AuxHeader] = 0x800,
 		[DwgSectionDefinition.Header] = 0x800,
 		[DwgSectionDefinition.FileDepList] = 0x100,
+		[DwgSectionDefinition.XrefManifest] = 0xF800,
 	};
 
 	public override void AddSection(string name, MemoryStream stream, bool isCompressed, int decompsize = 0x7400)
@@ -401,6 +403,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 	//terminator entry, which is the +1 in SectionsAmount.
 	private static readonly string[] _sectionMapOrder =
 	{
+		DwgSectionDefinition.XrefManifest,
 		"AcDb:AppInfoHistory",
 		DwgSectionDefinition.FileDepList,
 		DwgSectionDefinition.AppInfo,
