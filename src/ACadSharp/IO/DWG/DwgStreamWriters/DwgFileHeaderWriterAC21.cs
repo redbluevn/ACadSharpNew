@@ -110,10 +110,11 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		byte[] data = stream.ToArray();
 		int pageMax = _canonicalPageSize.TryGetValue(name, out int canonical) ? canonical : decompsize;
 
-		//The Preview page grows with the image, rounded up, the way the specification sizes it.
+		//The Preview page grows with the image.  Measured on a real R2007 file: 38319 bytes of
+		//thumbnail get a 0x9800 page, i.e. AutoCAD rounds up to the next 0x800, not to 0x20.
 		if (name == DwgSectionDefinition.Preview && data.Length > pageMax)
 		{
-			pageMax = (data.Length + 0x1F) & ~0x1F;
+			pageMax = (data.Length + 0x7FF) & ~0x7FF;
 		}
 
 		this._sections.Add(new PendingSection
