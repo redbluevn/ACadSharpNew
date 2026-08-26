@@ -110,11 +110,17 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		byte[] data = stream.ToArray();
 		int pageMax = _canonicalPageSize.TryGetValue(name, out int canonical) ? canonical : decompsize;
 
-		//The Preview page grows with the image.  Measured on a real R2007 file: 38319 bytes of
-		//thumbnail get a 0x9800 page, i.e. AutoCAD rounds up to the next 0x800, not to 0x20.
-		if (name == DwgSectionDefinition.Preview && data.Length > pageMax)
+		//A section stored raw (encoding 1) gets a page sized to its own data, rounded up to the
+		//next 0x80 - measured on two real R2007 files, 8 sections out of 8: SummaryInfo 70 -> 128,
+		//AppInfo 472 -> 512 and 718 -> 768, AppInfoHistory 1390 -> 1408 and 1470 -> 1536, Preview
+		//38319 -> 38912.  A fixed table gets this right only for the drawing it was measured on.
+		if (_sectionProperties.TryGetValue(name, out var props) && props.encoding == 1)
 		{
-			pageMax = (data.Length + 0x7FF) & ~0x7FF;
+			//Preview rounds to the next 0x800, the rest to the next 0x80 - both measured on two
+			//real files: 38319 -> 38912, and 70 -> 128, 472 -> 512, 718 -> 768, 1390 -> 1408,
+			//1470 -> 1536.
+			int grain = name == DwgSectionDefinition.Preview ? 0x800 : 0x80;
+			pageMax = (data.Length + grain - 1) & ~(grain - 1);
 		}
 
 		this._sections.Add(new PendingSection
@@ -127,7 +133,10 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 
 	public override void WriteFile()
 	{
-		var rng = new Dwg21RandomEncoder(0x4D6F7265447767UL); //deterministic; stored as RandomSeed
+		//One source of truth: the value stored as RandomSeed must be the one the encoder ran from,
+		//or the file claims a seed that does not produce its own encoded fields.
+		ulong randomSeed = 0x4D6F7265447767UL;
+		var rng = new Dwg21RandomEncoder(randomSeed);
 		var written = new List<WrittenSection>();
 		//A minted minimal file from AutoCAD 2027 assigns ids 3.. to the data pages in file
 		//order, the next two to the section map copies, and - after a gap of two - the last two
@@ -261,7 +270,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 
 		ulong fileSize = 0x480UL + (ulong)body.Length + 0x400UL;
 		byte[] metadata = this.buildMetadata(
-			fileSize, rngSeed: 0x4D6F7265447767UL,
+			fileSize, rngSeed: randomSeed,
 			pagesMap1Offset: (ulong)pagesMap1Offset, pagesMapId1: pagesMapId1,
 			pagesMap2Offset: (ulong)pagesMap2Offset, pagesMapId2: pagesMapId2,
 			pmComp: pmComp, pmUncomp: (ulong)pagesMapData.Length, pmFactor: pmFactor,
@@ -338,7 +347,8 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 			compressedLength = length;
 			payloadBytes = new byte[length];
 			Array.Copy(data, offset, payloadBytes, 0, length);
-			storedSize = align0x20(Math.Max(length, pageMaxSize));
+			//A real file leaves an encoding-1 page 0x20 more room than the page size it declares.
+			storedSize = align0x20(Math.Max(length, pageMaxSize) + 0x20);
 			byte[] page = new byte[storedSize];
 			Array.Copy(data, offset, page, 0, length);
 			return page;
