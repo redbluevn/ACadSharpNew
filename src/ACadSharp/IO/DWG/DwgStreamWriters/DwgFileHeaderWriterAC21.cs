@@ -65,10 +65,14 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 	{
 		[DwgSectionDefinition.FileDepList] = (0x6c4205ca, 1),
 		[DwgSectionDefinition.XrefManifest] = (0x7ae40662, 4),
-		[DwgSectionDefinition.AppInfoHistory] = (0x96de0737, 1),
-		[DwgSectionDefinition.AppInfo] = (0x3fa0043e, 1),
-		[DwgSectionDefinition.Preview] = (0x40aa0473, 1),
-		[DwgSectionDefinition.SummaryInfo] = (0x717a060f, 1),
+		//These four are stored RAW in a real file (encoding 1), and a raw page carries a checked
+		//four-byte value after its data that nothing here can compute yet.  Written COMPRESSED
+		//(encoding 4) there is no such field, and AutoCAD accepts it: measured by switching a real
+		//file's AcDb:AppInfoHistory to encoding 4 - it opens with AUDIT 0.
+		[DwgSectionDefinition.AppInfoHistory] = (0x96de0737, 4),
+		[DwgSectionDefinition.AppInfo] = (0x3fa0043e, 4),
+		[DwgSectionDefinition.Preview] = (0x40aa0473, 4),
+		[DwgSectionDefinition.SummaryInfo] = (0x717a060f, 4),
 		[DwgSectionDefinition.RevHistory] = (0x60a205b3, 4),
 		[DwgSectionDefinition.AcDbObjects] = (0x674c05a9, 4),
 		[DwgSectionDefinition.ObjFreeSpace] = (0x77e2061f, 4),
@@ -242,36 +246,53 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		int pagesMapId2 = nextId++;
 		int totalPageCount = dataPageCount + 4;
 		byte[] pagesMapProbe = new byte[totalPageCount * 16];
-		buildSystemPage(pagesMapProbe, null, out _, out _, out long pmStoredProbe, out _, out _);
+		buildSystemPage(pagesMapProbe, null, out _, out _, out long pmAssumed, out _, out _);
 
-		//File order, mirroring a minted minimal real file: the two pages map copies ADJACENT at
-		//relative offset 0, then the data pages, then the two section map copies at the end,
-		//then the header copy.
-		var fileOrder = new List<(int id, long size)>
+		//The pages map lists its own two pages, so its content depends on their size and their
+		//size depends on how well that content compresses.  Assume a size, build the map, and
+		//repeat while the answer disagrees - it settles in a round or two, and the loop is bounded
+		//so a pathological case fails loudly instead of spinning.
+		List<(int id, long size)> fileOrder = null;
+		byte[] pagesMapData = null, pagesMapPage = null;
+		ulong pmComp = 0, pmFactor = 0, pmCrcComp = 0, pmCrcUncomp = 0;
+		long pmStored = 0;
+		for (int attempt = 0; ; attempt++)
 		{
-			(pagesMapId1, pmStoredProbe),
-			(pagesMapId2, pmStoredProbe),
-		};
-		fileOrder.AddRange(dataPages.Select(d => (d.page.Id, d.page.StoredSize)));
-		fileOrder.Add((sectionMapId1, smStored));
-		fileOrder.Add((sectionMapId2, smStored));
-
-		byte[] pagesMapData = new byte[totalPageCount * 16];
-		using (var pm = new MemoryStream(pagesMapData, true))
-		{
-			foreach ((int id, long size) in fileOrder)
+			//File order, mirroring a minted minimal real file: the two pages map copies ADJACENT
+			//at relative offset 0, then the data pages, then the two section map copies at the
+			//end, then the header copy.
+			fileOrder = new List<(int id, long size)>
 			{
-				pm.Write(LittleEndianConverter.Instance.GetBytes((long)size), 0, 8);
-				pm.Write(LittleEndianConverter.Instance.GetBytes((long)id), 0, 8);
-			}
-		}
+				(pagesMapId1, pmAssumed),
+				(pagesMapId2, pmAssumed),
+			};
+			fileOrder.AddRange(dataPages.Select(d => (d.page.Id, d.page.StoredSize)));
+			fileOrder.Add((sectionMapId1, smStored));
+			fileOrder.Add((sectionMapId2, smStored));
 
-		byte[] pagesMapPage = buildSystemPage(pagesMapData, rng,
-			out ulong pmComp, out ulong pmFactor, out long pmStored,
-			out ulong pmCrcComp, out ulong pmCrcUncomp);
-		if (pmStored != pmStoredProbe)
-		{
-			throw new InvalidOperationException("pages map sizing is not content independent");
+			pagesMapData = new byte[totalPageCount * 16];
+			using (var pm = new MemoryStream(pagesMapData, true))
+			{
+				foreach ((int id, long size) in fileOrder)
+				{
+					pm.Write(LittleEndianConverter.Instance.GetBytes((long)size), 0, 8);
+					pm.Write(LittleEndianConverter.Instance.GetBytes((long)id), 0, 8);
+				}
+			}
+
+			pagesMapPage = buildSystemPage(pagesMapData, rng, out pmComp, out pmFactor,
+				out pmStored, out pmCrcComp, out pmCrcUncomp);
+			if (pmStored == pmAssumed)
+			{
+				break;
+			}
+
+			if (attempt >= 8)
+			{
+				throw new InvalidOperationException("pages map sizing does not settle");
+			}
+
+			pmAssumed = pmStored;
 		}
 
 		//4. Assemble the body and record the offsets the metadata needs.
