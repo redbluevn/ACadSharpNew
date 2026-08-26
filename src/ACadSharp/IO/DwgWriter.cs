@@ -311,6 +311,13 @@ public class DwgWriter : CadWriterBase<DwgWriterConfiguration>
 		if (this._fileHeader.AcadVersion < ACadVersion.AC1018)
 			return;
 
+		//Neither real R2007 file measured here carries an AcDb:FileDepList - not the older sample,
+		//and not the file AutoCAD 2027 writes for a drawing this library created - so R2007 does
+		//not get one.  (Dropping it does not by itself make our AC1021 output open; it removes a
+		//section no real file of that version has.)
+		if (this._fileHeader.AcadVersion == ACadVersion.AC1021)
+			return;
+
 		MemoryStream stream = new MemoryStream();
 		StreamIO swriter = new StreamIO(stream);
 
