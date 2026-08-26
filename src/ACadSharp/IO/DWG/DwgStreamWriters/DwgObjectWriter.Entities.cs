@@ -2672,16 +2672,193 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			return;
 		}
 
-		//Until R2007
+		//Until R2007: the inline cell layout, mirroring DwgObjectReader.readTableEntity's own
+		//pre-R2010 branch field for field and DwgObjectReader.readTableCellData for each cell. That
+		//reader is the specification here - it is what will read this back, and what already reads
+		//AutoCAD's own AC1015 and AC1018 files.
+		//
+		//What is deliberately NOT written: the four override blocks that close the record (table,
+		//border colour, border lineweight, border visibility) and the per-cell override block. Each
+		//is announced by a bit, and each is written as absent. They carry appearance, not content -
+		//and the reader's own table-override branch is a TODO that reads the values and drops most
+		//of them, so there is nothing faithful to write back. Announcing an override and then not
+		//writing what it promises is the one shape measured to destroy data (see the DXF writer's
+		//group 93), so the bit says no.
 
-		//Common:
 		//Flag for table value BS 90
-		//	Bit flags, 0x06(0x02 + 0x04): has block,
-		//	0x10: table direction, 0 = up, 1 = down,
-		//	0x20: title suppressed.
-		//	Normally 0x06 is always set.
+		this._writer.WriteBitShort((short)table.ValueFlag);
 
-		throw new NotImplementedException();
+		//Hor.Dir.Vector 3BD 11
+		this._writer.Write3BitDouble(table.HorizontalDirection);
+
+		//Number of columns BL 92
+		this._writer.WriteBitLong(table.Columns.Count);
+		//Number of rows BL 91
+		this._writer.WriteBitLong(table.Rows.Count);
+
+		//Column widths BD 142, repeats "# of columns" times
+		foreach (TableEntity.Column column in table.Columns)
+		{
+			this._writer.WriteBitDouble(column.Width);
+		}
+
+		//Row heights BD 141, repeats "# of rows" times
+		foreach (TableEntity.Row row in table.Rows)
+		{
+			this._writer.WriteBitDouble(row.Height);
+		}
+
+		//H 342 Table Style ID (hard pointer)
+		this._writer.HandleReference(DwgReferenceType.HardPointer, table.Style);
+
+		//The merges are on the cells in this layout and may be in MergedCellRanges instead, exactly
+		//as in DXF - same translation, same reason.
+		var merges = this.legacyMergeView(table);
+
+		for (int r = 0; r < table.Rows.Count; r++)
+		{
+			for (int c = 0; c < table.Columns.Count; c++)
+			{
+				TableEntity.Cell cell = c < table.Rows[r].Cells.Count
+					? table.Rows[r].Cells[c]
+					: new TableEntity.Cell();
+
+				this.writeTableCellDataLegacy(cell, merges[(r, c)]);
+			}
+		}
+
+		//End Cell Data.
+		//
+		//Has table overrides B. One thing here IS worth carrying: the cell margins, which this
+		//layout can name on their own (0x0008 and 0x0010). Without them AutoCAD falls back to the
+		//table style's default of 0.06 and the table is drawn with the wrong spacing. Only the two
+		//flags that are written are set - announcing anything else would promise a value that does
+		//not follow, which is the shape measured to destroy data.
+		bool hasMargins = table.CellStyleOverride.HorizontalMargin != 0
+			|| table.CellStyleOverride.VerticalMargin != 0;
+		this._writer.WriteBit(hasMargins);
+		if (hasMargins)
+		{
+			//Cell flag override BL 177
+			this._writer.WriteBitLong((int)(TableEntity.TableOverrideFlags.HorizontalCellMargin
+				| TableEntity.TableOverrideFlags.VerticalCellMargin));
+			//Horz. Cell margin BD 40
+			this._writer.WriteBitDouble(table.CellStyleOverride.HorizontalMargin);
+			//Vert. Cell margin BD 41
+			this._writer.WriteBitDouble(table.CellStyleOverride.VerticalMargin);
+		}
+
+		//Has border color overrides B
+		this._writer.WriteBit(false);
+		//Has border lineweight overrides B
+		this._writer.WriteBit(false);
+		//Has border visibility overrides B
+		this._writer.WriteBit(false);
+	}
+
+	/// <summary>
+	/// The span and merged flag of every cell for the pre-R2010 layout, from a table of either
+	/// shape - the same translation the DXF writer needs, and for the same reason: a table read
+	/// from an R2010+ file keeps its merges in <c>MergedCellRanges</c> and reports every cell as
+	/// 0x0, while this layout keeps them on the cells.
+	/// </summary>
+	private Dictionary<(int Row, int Column), (int Width, int Height, bool Merged)> legacyMergeView(TableEntity table)
+	{
+		var view = new Dictionary<(int, int), (int, int, bool)>();
+		for (int r = 0; r < table.Rows.Count; r++)
+		{
+			for (int c = 0; c < table.Columns.Count; c++)
+			{
+				TableEntity.Cell cell = c < table.Rows[r].Cells.Count ? table.Rows[r].Cells[c] : null;
+				view[(r, c)] = cell == null
+					? (1, 1, false)
+					: (Math.Max(1, cell.BorderWidth), Math.Max(1, cell.BorderHeight), cell.MergedValue != 0);
+			}
+		}
+
+		foreach (TableEntity.CellRange range in table.MergedCellRanges)
+		{
+			int width = range.RightColumnIndex - range.LeftColumnIndex + 1;
+			int height = range.BottomRowIndex - range.TopRowIndex + 1;
+			for (int r = range.TopRowIndex; r <= range.BottomRowIndex; r++)
+			{
+				for (int c = range.LeftColumnIndex; c <= range.RightColumnIndex; c++)
+				{
+					if (!view.ContainsKey((r, c)))
+					{
+						continue;
+					}
+
+					view[(r, c)] = r == range.TopRowIndex && c == range.LeftColumnIndex
+						? (width, height, false)
+						: (1, 1, true);
+				}
+			}
+		}
+
+		return view;
+	}
+
+	/// <summary>
+	/// One cell in the pre-R2010 inline layout, mirroring DwgObjectReader.readTableCellData.
+	/// </summary>
+	private void writeTableCellDataLegacy(TableEntity.Cell cell, (int Width, int Height, bool Merged) merge)
+	{
+		TableEntity.CellContent content = cell.Content;
+		bool isBlock = cell.Type == TableEntity.CellType.Block
+			|| content?.ContentType == TableEntity.TableCellContentType.Block
+			|| content?.BlockRecord != null;
+
+		//Cell type BS 171: 1 = text, 2 = block. A cell read from an R2010+ file reports 0, which is
+		//not one of the two the format has, so it goes out as the text cell it is.
+		this._writer.WriteBitShort(isBlock ? (short)2 : (short)1);
+
+		//Cell edge flags RC 172
+		this._writer.WriteByte((byte)cell.EdgeFlags);
+
+		//Cell merged value B 173
+		this._writer.WriteBit(merge.Merged);
+		//Autofit flag B 174
+		this._writer.WriteBit(cell.AutoFit);
+		//Merged width flag BL 175
+		this._writer.WriteBitLong(merge.Width);
+		//Merged height flag BL 176
+		this._writer.WriteBitLong(merge.Height);
+		//Rotation value BD 145
+		this._writer.WriteBitDouble(cell.Rotation);
+
+		//H 344 for a text cell, 340 for a block cell (hard pointer). A text cell whose text is
+		//written inline says 0 here - that is what tells the reader the text follows.
+		if (isBlock)
+		{
+			this._writer.HandleReference(DwgReferenceType.HardPointer, content?.BlockRecord);
+
+			//Block scale BD 144
+			this._writer.WriteBitDouble(cell.BlockScale);
+			//Has attributes flag B - the attributes of a block cell are not carried by this model,
+			//so none are announced.
+			this._writer.WriteBit(false);
+		}
+		else
+		{
+			this._writer.HandleReference(DwgReferenceType.HardPointer, null);
+
+			//Text string TV 1, present only because the handle above is 0.
+			//
+			//This layout has one string per cell and no typed values at all - no doubles, points or
+			//dates - so a typed cell is written as the text it draws. AutoCAD's own formatting of it
+			//is preferred where the file carried it, because that is what the cell showed; failing
+			//that the value speaks for itself. Writing only strings, as the first version did, lost
+			//every number and date in the table.
+			string text = content?.CadValue?.Value as string
+				?? (string.IsNullOrEmpty(content?.CadValue?.FormattedValue)
+					? content?.CadValue?.Value?.ToString()
+					: content.CadValue.FormattedValue);
+			this._writer.WriteVariableText(text ?? string.Empty);
+		}
+
+		//has override flag B - see the note in writeTableEntityLegacy.
+		this._writer.WriteBit(false);
 	}
 
 	private void writeTableContent(TableContent content)

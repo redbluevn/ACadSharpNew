@@ -436,6 +436,26 @@ internal partial class DwgObjectReader : DwgSectionIO
 				cell.Contents.Add(content);
 				break;
 			case CellType.Block:
+				//A block cell needs a content of its own for the block to live on, and this branch
+				//never made one - only the text branch did - so CadTableCellTemplate.Build found
+				//Cell.Content null and dropped the handle it had just resolved. The block cells of
+				//AutoCAD's own AC1015 file therefore came back knowing nothing about their block.
+				//A block cell needs a content of its own for the block to live on, and this branch
+				//never made one - only the text branch did - so CadTableCellTemplate.Build found
+				//Cell.Content null and dropped the handle it had just resolved.
+				//
+				//Only below R2007, because R2007 and later add one a few lines further down for the
+				//value fields, and a cell with TWO contents reports Cell.Content as null by design -
+				//which is exactly what a first attempt at this did: every AC1021 table stopped
+				//reading, and the failsafe turned it into "could not read ACAD_TABLE". Above R2007
+				//the type is set on the content that path creates.
+				if (!this.R2007Plus)
+				{
+					CellContent blockContent = new CellContent();
+					blockContent.ContentType = TableCellContentType.Block;
+					cell.Contents.Add(blockContent);
+				}
+
 				//Block scale BD 144
 				cell.BlockScale = this._mergedReaders.ReadBitDouble();
 				//Has attributes flag B
@@ -575,8 +595,16 @@ internal partial class DwgObjectReader : DwgSectionIO
 			//Unknown BL
 			var unknown = this._mergedReaders.ReadBitLong();
 			//Value fields … See paragraph 20.4.98.
-			cell.Contents.Add(new CellContent());
-			this.readCadValue(cell.Content.CadValue);
+			CellContent content = new CellContent();
+			if (cell.Type == CellType.Block)
+			{
+				//The content type is not in this layout either - it is implied by the cell type -
+				//and without it a block cell says it holds nothing, so the block is dropped.
+				content.ContentType = TableCellContentType.Block;
+			}
+
+			cell.Contents.Add(content);
+			this.readCadValue(content.CadValue);
 		}
 	}
 
@@ -904,13 +932,15 @@ internal partial class DwgObjectReader : DwgSectionIO
 			}
 			if (flags.HasFlag(TableEntity.TableOverrideFlags.HorizontalCellMargin))
 			{
-				//Horz. Cell margin BD 40 Present only if bit 0x0008 is set in table overrides
-				this._mergedReaders.ReadBitDouble();
+				//Horz. Cell margin BD 40 Present only if bit 0x0008 is set in table overrides.
+				//Read and dropped until T93, so a table from an AC1015 or AC1018 file lost its
+				//margins and was drawn with the table style's default of 0.06 instead.
+				table.CellStyleOverride.HorizontalMargin = this._mergedReaders.ReadBitDouble();
 			}
 			if (flags.HasFlag(TableEntity.TableOverrideFlags.VerticalCellMargin))
 			{
 				//Vert. cell margin BD 41 Present only if bit 0x0010 is set in table overrides
-				this._mergedReaders.ReadBitDouble();
+				table.CellStyleOverride.VerticalMargin = this._mergedReaders.ReadBitDouble();
 			}
 			if (flags.HasFlag(TableEntity.TableOverrideFlags.TitleRowColor))
 			{

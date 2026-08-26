@@ -130,6 +130,58 @@ namespace ACadSharp.Tests.IO.DXF
 			}
 		}
 
+		/// <summary>
+		/// Group 41 of an ACAD_TABLE is the vertical cell margin - and it had no case of its own, so
+		/// it fell through to the INSERT map, where 41 is the X scale.
+		/// </summary>
+		/// <remarks>
+		/// AutoCAD's table has a vertical margin of 0.0342, so it was read back as a block reference
+		/// scaled by 0.0342 in X, and this writer wrote that scale into the file it produced. Found
+		/// by diffing our DXF against AutoCAD's pair by pair, not by any test - nothing was looking
+		/// at the scale of a table.
+		/// </remarks>
+		[Fact]
+		public void ATableIsNotScaledByItsCellMargin()
+		{
+			CadDocument doc = DxfReader.Read(acadSample);
+
+			foreach (TableEntity table in doc.ModelSpace.Entities.OfType<TableEntity>())
+			{
+				Assert.Equal(1.0, table.XScale);
+				Assert.Equal(1.0, table.YScale);
+			}
+		}
+
+		/// <summary>
+		/// The table's own cell-style override: the margins and the text height of each column.
+		/// </summary>
+		/// <remarks>
+		/// DXF announces them in group 93, a bitmask naming which of them follow. Both halves have
+		/// to travel together: the mask without the values makes AutoCAD drop every merge, and the
+		/// values without the mask are not read at all.
+		/// </remarks>
+		[Fact]
+		public void TheTablesCellStyleOverrideSurvives()
+		{
+			CadDocument doc = DxfReader.Read(acadSample);
+			TableEntity before = doc.ModelSpace.Entities.OfType<TableEntity>().First();
+			Assert.NotEqual(0.0, before.CellStyleOverride.HorizontalMargin);
+			Assert.NotEqual(0.0, before.CellStyleOverride.VerticalMargin);
+			Assert.Contains(before.Columns, c => c.CellStyleOverride.TextHeight != 0.0);
+
+			TableEntity after = writeAndRead(doc).ModelSpace.Entities.OfType<TableEntity>().First();
+
+			Assert.Equal(before.CellStyleOverride.HorizontalMargin, after.CellStyleOverride.HorizontalMargin);
+			Assert.Equal(before.CellStyleOverride.VerticalMargin, after.CellStyleOverride.VerticalMargin);
+			Assert.Equal(before.Columns.Count, after.Columns.Count);
+			for (int c = 0; c < before.Columns.Count; c++)
+			{
+				Assert.Equal(
+					before.Columns[c].CellStyleOverride.TextHeight,
+					after.Columns[c].CellStyleOverride.TextHeight);
+			}
+		}
+
 		private static CadDocument writeAndRead(CadDocument doc)
 		{
 			byte[] bytes;

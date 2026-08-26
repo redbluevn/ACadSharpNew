@@ -22,6 +22,18 @@ internal partial class CadTableEntityTemplate : CadInsertTemplate
 
 	public double? HorizontalMargin { get; set; }
 
+	/// <summary>
+	/// The override text heights read before the first cell, one per column, in order.
+	/// </summary>
+	/// <remarks>
+	/// They cannot be handed to the columns as they arrive: in AutoCAD's order the heights come
+	/// BEFORE the column widths in 142, and it is 142 that creates the columns - so at that point
+	/// there is nothing to put them on. Collected here and applied in build, once the columns exist.
+	/// Assigning them where they are read looks right and quietly drops every one of them, which is
+	/// what the first attempt at this did.
+	/// </remarks>
+	public List<double> ColumnTextHeights { get; } = new();
+
 	public ulong? NullHandle { get; set; }
 
 	public ulong? StyleHandle { get; set; }
@@ -85,5 +97,11 @@ internal partial class CadTableEntityTemplate : CadInsertTemplate
 		}
 
 		this.CellStyleTemplate?.Build(builder);
+
+		//The columns exist by now, so the override heights collected while reading can be placed.
+		for (int i = 0; i < this.ColumnTextHeights.Count && i < this.TableEntity.Columns.Count; i++)
+		{
+			this.TableEntity.Columns[i].CellStyleOverride.TextHeight = this.ColumnTextHeights[i];
+		}
 	}
 }

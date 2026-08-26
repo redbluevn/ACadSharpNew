@@ -506,6 +506,19 @@ internal abstract class DxfSectionReaderBase
 				return true;
 			case 40:
 				tmp.HorizontalMargin = this._reader.ValueAsDouble;
+				table.CellStyleOverride.HorizontalMargin = this._reader.ValueAsDouble;
+				return true;
+			case 41:
+				//Read for the first time in T98. Without a case of its own it fell through to the
+				//INSERT map, where 41 is the X SCALE - so AutoCAD's table, whose vertical cell
+				//margin is 0.0342, came back as a block reference scaled by 0.0342 in X, and this
+				//writer wrote that back. Found by diffing our DXF against AutoCAD's pair by pair.
+				table.CellStyleOverride.VerticalMargin = this._reader.ValueAsDouble;
+				return true;
+			case 93:
+				//Kept as it came as well as through the bool - see TableEntity.CellStyleOverrideFlags.
+				table.CellStyleOverrideFlags = this._reader.ValueAsInt;
+				table.OverrideFlag = this._reader.ValueAsInt != 0;
 				return true;
 			case 63:
 				tmp.CurrentCell.StyleOverride.BackgroundColor = new Color(this._reader.ValueAsShort);
@@ -517,6 +530,14 @@ internal abstract class DxfSectionReaderBase
 				if (tmp.CurrentCellTemplate != null)
 				{
 					tmp.CurrentCellTemplate.FormatTextHeight = this._reader.ValueAsDouble;
+				}
+				else
+				{
+					//Before the first cell exists, a 140 is the override text height of the next
+					//column - AutoCAD writes exactly one per column, right after the margins, and
+					//only when 93 says they are there. Dropped until T98, which is why writing the
+					//override back was not possible.
+					tmp.ColumnTextHeights.Add(this._reader.ValueAsDouble);
 				}
 				return true;
 			case 283:
@@ -632,6 +653,33 @@ internal abstract class DxfSectionReaderBase
 					break;
 				case 91:
 					value.SetValue(this._reader.ValueAsInt);
+					break;
+				case 310:
+					//A date cell carries a SYSTEMTIME as sixteen bytes, announced by 92 as its
+					//length: year, month, day of week, day, hour, minute, second, millisecond, each
+					//a little-endian word. Read from AutoCAD's own file - E8070B0005000F00 and eight
+					//zero bytes is 2024-11-15, a Friday - and the DWG reader already gives back the
+					//same date, which is what confirms the reading rather than a specification.
+					//Until now this group was not read at all, so every date cell came back empty.
+					if (value.ValueType == CadValueType.Date)
+					{
+						byte[] time = this._reader.ValueAsBinaryChunk;
+						if (time != null && time.Length >= 16)
+						{
+							ushort word(int at) => (ushort)(time[at] | (time[at + 1] << 8));
+							try
+							{
+								value.SetValue(new System.DateTime(
+									word(0), word(2), word(6), word(8), word(10), word(12), word(14)),
+									CadValueType.Date);
+							}
+							catch (System.ArgumentOutOfRangeException)
+							{
+								//Not a date this calendar has; leave the cell empty rather than
+								//throw the whole table away.
+							}
+						}
+					}
 					break;
 				case 93:
 					value.Flags = this._reader.ValueAsInt;

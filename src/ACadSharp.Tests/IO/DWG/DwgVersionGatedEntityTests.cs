@@ -2,6 +2,7 @@ using ACadSharp.Entities;
 using ACadSharp.IO;
 using ACadSharp.Objects;
 using ACadSharp.Tables;
+using ACadSharp.Tests.Common;
 using CSMath;
 using System.Collections.Generic;
 using System.IO;
@@ -11,10 +12,10 @@ using Xunit;
 namespace ACadSharp.Tests.IO.DWG
 {
 	/// <summary>
-	/// A table is dropped when the file is written older than R2010, because only the R2010 layout
-	/// of it is implemented. That is a version limit, not a missing entity type - AutoCAD stores
-	/// tables in its own R2000 and R2004 files - so the message says which limit it is and which
-	/// version keeps the object.
+	/// A table used to be dropped at every version below R2010, because only the R2010 layout of it
+	/// was implemented. It is now written in the inline cell layout as well, so R2000 and R2004 keep
+	/// it - AutoCAD opens both with 0 errors. R2007 is the exception and says so: its text cells are
+	/// not in that layout, and a file written as if they were does not open.
 	///
 	/// A multileader is no longer dropped: the pre-R2007 stream carries one extra field, the
 	/// arrowhead list, which the writer skipped. Without it every value after that point was
@@ -41,17 +42,102 @@ namespace ACadSharp.Tests.IO.DWG
 			Assert.Single(Assert.Single(root.Lines).Points);
 		}
 
+		/// <summary>
+		/// A table is written and read back at R2000 and R2004, in the inline cell layout those
+		/// versions use.
+		/// </summary>
+		/// <remarks>
+		/// It used to be dropped at every version below R2010, and this test used to assert the
+		/// message saying so. AutoCAD 2027 on the upstream sample carried down to both: the file
+		/// opens, AUDIT reports 0, and every cell of both its tables comes back - so the drop was a
+		/// limit of this writer, not of those versions.
+		/// </remarks>
 		[Theory]
 		[InlineData(ACadVersion.AC1015)]
 		[InlineData(ACadVersion.AC1018)]
-		public void TableBelowR2010SaysItIsAVersionLimit(ACadVersion version)
+		public void TableIsWrittenAndReadBackBeforeR2010(ACadVersion version)
 		{
-			List<string> messages = write(version, out _);
+			List<string> messages = write(version, out CadDocument reopened);
+
+			Assert.DoesNotContain(messages, m => m.Contains("TableEntity", System.StringComparison.Ordinal));
+			Assert.Single(reopened.ModelSpace.Entities.OfType<TableEntity>());
+		}
+
+		/// <summary>
+		/// A real table - AutoCAD's own, with its text, its numbers and its merges - carried down to
+		/// R2000 and R2004 and read back cell for cell.
+		/// </summary>
+		/// <remarks>
+		/// The fixture above is a table built in code with no rows at all, so it only shows that the
+		/// entity survives. This is the one that shows the CONTENT does. The inline layout has one
+		/// string per cell and no typed values, so a number or a date goes in as the text the cell
+		/// draws - the same thing AutoCAD writes there - and that is what is compared.
+		/// </remarks>
+		[Theory]
+		[InlineData(ACadVersion.AC1015)]
+		[InlineData(ACadVersion.AC1018)]
+		public void ARealTableKeepsItsCellsBeforeR2010(ACadVersion version)
+		{
+			CadDocument doc = DwgReader.Read(Path.Combine(TestVariables.SamplesFolder, "sample_AC1032.dwg"));
+			TableEntity[] before = doc.ModelSpace.Entities.OfType<TableEntity>().ToArray();
+			Assert.Equal(2, before.Length);
+
+			doc.Header.Version = version;
+			byte[] bytes;
+			using (MemoryStream stream = new MemoryStream())
+			{
+				DwgWriter.Write(stream, doc, new DwgWriterConfiguration { CloseStream = false }, null);
+				bytes = stream.ToArray();
+			}
+
+			TableEntity[] after = DwgReader.Read(new MemoryStream(bytes))
+				.ModelSpace.Entities.OfType<TableEntity>().ToArray();
+			Assert.Equal(before.Length, after.Length);
+
+			for (int t = 0; t < before.Length; t++)
+			{
+				Assert.Equal(before[t].Rows.Count, after[t].Rows.Count);
+				Assert.Equal(before[t].Columns.Count, after[t].Columns.Count);
+
+				for (int r = 0; r < before[t].Rows.Count; r++)
+				{
+					for (int c = 0; c < before[t].Rows[r].Cells.Count; c++)
+					{
+						TableEntity.Cell was = before[t].Rows[r].Cells[c];
+						TableEntity.Cell got = after[t].Rows[r].Cells[c];
+						string where = $"table {t} cell [{r},{c}] at {version}";
+
+						object value = was.Content?.CadValue?.Value;
+						string drawn = was.Content?.CadValue?.FormattedValue;
+						string expected = value as string
+							?? (string.IsNullOrEmpty(drawn) ? value?.ToString() : drawn)
+							?? string.Empty;
+						string actual = got.Content?.CadValue?.Value?.ToString() ?? string.Empty;
+
+						Assert.True(expected == actual, $"{where}: \"{expected}\" became \"{actual}\"");
+					}
+				}
+			}
+		}
+
+		/// <summary>
+		/// R2007 is the one version below R2010 that still drops it, and says so precisely.
+		/// </summary>
+		/// <remarks>
+		/// The reader's own inline-text branch is conditioned on the version being BELOW AC1021, so
+		/// R2007 keeps a text cell's string somewhere the inline layout does not describe. Written
+		/// as if it did, AutoCAD does not open the file at all - measured, which is why the writer
+		/// stops at that version rather than guessing.
+		/// </remarks>
+		[Fact]
+		public void TableAtR2007SaysWhichVersionsKeepIt()
+		{
+			List<string> messages = write(ACadVersion.AC1021, out _);
 
 			Assert.Contains(messages, m =>
 				m.Contains("TableEntity", System.StringComparison.Ordinal) &&
-				m.Contains(version.ToString(), System.StringComparison.Ordinal) &&
-				m.Contains(ACadVersion.AC1024.ToString(), System.StringComparison.Ordinal));
+				m.Contains(ACadVersion.AC1021.ToString(), System.StringComparison.Ordinal) &&
+				m.Contains(ACadVersion.AC1015.ToString(), System.StringComparison.Ordinal));
 		}
 
 		[Fact]

@@ -774,24 +774,41 @@ internal abstract partial class DxfSectionWriterBase
 		this._writer.Write(91, table.Rows.Count, map);
 		this._writer.Write(92, table.Columns.Count, map);
 
-		//93 is not a flag saying "there is an override", it is a bitmask saying WHICH override values
-		//follow - the cell margins in 40 and 41, and a text height per column in 140. AutoCAD's two
-		//tables settle that much on their own: the one with 93 = 7340056 is followed by 40, 41 and
-		//three 140s before the row heights, and the one with 93 = 0 goes straight from 96 to 141.
+		//93 is a bitmask naming WHICH override values follow it - the cell margins in 40 and 41, and a
+		//text height per column in 140 - not a flag saying an override exists. AutoCAD's own two
+		//tables show both shapes: 93 = 7340056 followed by 40, 41 and three 140s before the row
+		//heights, and 93 = 0 going straight from 96 to 141.
 		//
-		//This model does not keep those values - the reader puts 40 on a template it then drops, and
-		//the 140s arrive before any cell exists - so the choice is between claiming an override with
-		//nothing behind it and saying there is none. Measured, because AUDIT does not decide it:
-		//written as 1, AutoCAD opens the file with **0 errors** and then quietly loses the merges -
-		//its own re-export of our file turns the 3x2 title cell back into 1x1 and clears every
-		//merged flag, and the table's value flag drops from 22 to 20. Written as 0, its re-export
-		//matches its own original cell for cell. So: 0, which is also the truth about what this
-		//writer carries. Carrying the override for real means keeping 40, 41 and the 140s in the
-		//model first, and that is the rest of G15.1.
-		this._writer.Write(93, 0);
+		//Which bit means which is not known from two samples, and it turned out not to matter. Three
+		//measurements, each through AutoCAD's own export of a file written here:
+		//
+		//  mask with its values     -> kept: 93, 40, 41 and all three 140s come back identical.
+		//  mask WITHOUT its values  -> AUDIT still 0, and every merge in the table is gone; the 3x2
+		//                              title cell comes back 1x1 and the value flag falls 22 -> 20.
+		//  values with a zero mask  -> kept: the margins survive, so the values are read on their
+		//                              own account and the mask does not gate them.
+		//
+		//So the rule is: write the values whenever there are values, and write the mask exactly as
+		//it was read. Never the mask alone - that is the one combination that destroys data, and it
+		//is also the one AUDIT is happy with.
+		bool hasOverride = table.CellStyleOverride.HorizontalMargin != 0
+			|| table.CellStyleOverride.VerticalMargin != 0
+			|| table.Columns.Any(c => c.CellStyleOverride.TextHeight != 0);
+		this._writer.Write(93, hasOverride ? table.CellStyleOverrideFlags : 0);
 		this._writer.Write(94, table.OverrideBorderColor ? 1 : 0, map);
 		this._writer.Write(95, table.OverrideBorderLineWeight ? 1 : 0, map);
 		this._writer.Write(96, table.OverrideBorderVisibility ? 1 : 0, map);
+
+		if (hasOverride)
+		{
+			//In AutoCAD's order: the two margins, then one text height per column.
+			this._writer.Write(40, table.CellStyleOverride.HorizontalMargin);
+			this._writer.Write(41, table.CellStyleOverride.VerticalMargin);
+			foreach (TableEntity.Column column in table.Columns)
+			{
+				this._writer.Write(140, column.CellStyleOverride.TextHeight);
+			}
+		}
 
 		foreach (TableEntity.Row row in table.Rows)
 		{
@@ -876,6 +893,30 @@ internal abstract partial class DxfSectionWriterBase
 		}
 
 		return view;
+	}
+
+	/// <summary>
+	/// A date as the sixteen bytes of a SYSTEMTIME: year, month, day of week, day, hour, minute,
+	/// second, millisecond, each a little-endian word.
+	/// </summary>
+	private static byte[] systemTime(DateTime date)
+	{
+		byte[] bytes = new byte[16];
+		void word(int at, int v)
+		{
+			bytes[at] = (byte)(v & 0xFF);
+			bytes[at + 1] = (byte)((v >> 8) & 0xFF);
+		}
+
+		word(0, date.Year);
+		word(2, date.Month);
+		word(4, (int)date.DayOfWeek);
+		word(6, date.Day);
+		word(8, date.Hour);
+		word(10, date.Minute);
+		word(12, date.Second);
+		word(14, date.Millisecond);
+		return bytes;
 	}
 
 	private void writeTableCell(TableEntity.Cell cell, (int Width, int Height, short Merged) merge)
@@ -986,6 +1027,11 @@ internal abstract partial class DxfSectionWriterBase
 				break;
 			case CadValueType.Long when value.Value != null:
 				this._writer.Write(91, Convert.ToInt32(value.Value));
+				break;
+			case CadValueType.Date when value.Value is DateTime date:
+				//Sixteen bytes of SYSTEMTIME, announced by their length - the shape AutoCAD writes.
+				this._writer.Write(92, 16);
+				this._writer.Write(310, systemTime(date));
 				break;
 			case CadValueType.Point2D:
 			case CadValueType.Point3D:

@@ -242,19 +242,26 @@ internal partial class DwgObjectWriter : DwgSectionIO
 				return false;
 			case Shape:
 				return this.WriteShapes;
-			case TableEntity when !this.R2010Plus:
-				//Only the R2010 layout of a table is implemented: writeTableEntity throws at its
-				//own "Until R2007" branch, where the older inline cell layout would go. It is a
-				//limit of this writer, not of the format - AutoCAD's own AC1015 and AC1018 files
-				//carry tables - so say which limit it is, and which version keeps the object.
+			//A table below R2010 used to be dropped here, because writeTableEntity threw at its own
+			//"Until R2007" branch where the inline cell layout would go. T93 writes that layout,
+			//mirroring the reader that already reads AutoCAD's own AC1015 and AC1018 files - and
+			//measured through AutoCAD 2027 at both: opens, AUDIT 0, every cell back.
+			//
+			//AC1021 is the exception, and the reader says why: its own inline-text branch is
+			//conditioned on the version being BELOW AC1021, so R2007 puts a text cell's string
+			//somewhere this layout does not describe. Written as if it did, the file does not open
+			//at all - measured, not assumed. So R2007 keeps the old behaviour until that layout is
+			//decoded, and says which versions do work.
+			case TableEntity when this._version == ACadVersion.AC1021:
 				if (notify)
 				{
 					this.notify(
-						$"{entity.GetType().Name} {entity.Handle} is not written to a {this._version} file: only the {ACadVersion.AC1024} layout of it is implemented. {ACadVersion.AC1024} is the oldest version that keeps it.",
+						$"{entity.GetType().Name} {entity.Handle} is not written to a {this._version} file: the {ACadVersion.AC1021} layout of a table cell is not implemented. {ACadVersion.AC1015}, {ACadVersion.AC1018} and {ACadVersion.AC1024} and later keep it.",
 						NotificationType.NotImplemented);
 				}
 
 				return false;
+
 			//A table whose content was read from the pre-R2010 layout used to be dropped here,
 			//because writing it unconverted makes AutoCAD reject the file (ErrorStatus 53 at
 			//R2010) or work on it for as long as it is given. It is now CONVERTED on write - see

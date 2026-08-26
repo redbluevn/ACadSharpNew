@@ -118,6 +118,23 @@ public partial class TableEntity : Insert, IDxfClassDefined
 	[DxfCodeValue(280)]
 	public short Version { get; set; }
 
+	/// <summary>
+	/// The value DXF group 93 carried, as it was read.
+	/// </summary>
+	/// <remarks>
+	/// 93 is not a flag saying an override exists - <see cref="OverrideFlag"/> reads it as one, and
+	/// that is all a bool can say. It is a bitmask naming WHICH override values follow it: the cell
+	/// margins in 40 and 41, and a text height per column in 140. AutoCAD's own two tables settle
+	/// that much: the one with 93 = 7340056 is followed by 40, 41 and three 140s before the row
+	/// heights, and the one with 93 = 0 goes straight from 96 to 141.
+	///
+	/// Which bit means which is not known from two samples, so the value is carried as it came and
+	/// written back the same - together with the values it introduces. Writing the mask without them
+	/// is measurably worse than writing nothing: AutoCAD opens such a file with AUDIT 0 and then
+	/// drops every merge in the table.
+	/// </remarks>
+	internal int CellStyleOverrideFlags { get; set; }
+
 	internal List<BreakRowRange> BreakRowRanges { get; set; } = new();
 
 	internal TableContent Content { get; set; } = new();
