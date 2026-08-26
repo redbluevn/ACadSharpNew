@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using CSUtilities.Converters;
 using System.Text;
 
@@ -116,6 +117,7 @@ public class DwgWriter : CadWriterBase<DwgWriterConfiguration>
 		this.writeAppInfo();
 		this.writeFileDepList();
 		this.writeXrefManifest();
+		this.writeAppInfoHistory();
 		this.writeRevHistory();
 		//this.writeSecurity();
 		this.writeAuxHeader();
@@ -243,6 +245,61 @@ public class DwgWriter : CadWriterBase<DwgWriterConfiguration>
 		writer.Write();
 
 		this._fileHeaderWriter.AddSection(DwgSectionDefinition.Classes, stream, true);
+	}
+
+	//The 32 bytes an AcDb:AppInfoHistory section opens with. They are byte for byte the same in
+	//every real R2007 file measured (four of them, all with different bodies), so they are a
+	//constant of the section and not a digest of what follows it.
+	private static readonly byte[] _appInfoHistoryPrefix =
+	{
+		0x53, 0xde, 0x38, 0x1d, 0xec, 0x43, 0x21, 0xca, 0x96, 0x19, 0xe1, 0xe2, 0x17, 0x1a, 0x2a, 0x67,
+		0x3b, 0xd9, 0x7f, 0xf7, 0x3c, 0xbb, 0xce, 0x08, 0xa0, 0x53, 0xd8, 0xed, 0xd2, 0x8d, 0xc5, 0xc7,
+	};
+
+	private void writeAppInfoHistory()
+	{
+		//An R2007 drawing needs this section, which lists the applications that have saved it. It
+		//is shaped like AcDb:AppInfo - a class version, the name "AppInfoDataList", an entry count
+		//and then that many (16-byte id, string) pairs - with a 32-byte constant in front. The
+		//third entry is an OLE property set, and its two datetimes are a second copy of the
+		//drawing's created and modified times: AutoCAD refuses an R2007 file whose copies of a
+		//value disagree, the same rule that governs the editing time in AcDb:SummaryInfo.
+		if (this._fileHeader.AcadVersion != ACadVersion.AC1021)
+		{
+			return;
+		}
+
+		string version = Assembly.GetExecutingAssembly().GetName().Version.ToString();
+		CadSummaryInfo info = this._document.SummaryInfo;
+		string stamp(DateTime value) => value.ToString("yyyy-MM-ddTHH:mm:ss");
+
+		MemoryStream stream = new MemoryStream();
+		IDwgStreamWriter writer = DwgStreamWriterBase.GetStreamWriter(this._version, stream, Encoding.Unicode);
+
+		writer.WriteBytes(_appInfoHistoryPrefix);
+		//UInt32 class version, then the list name, then the entry count.
+		writer.WriteInt(0);
+		writer.WriteTextUnicode("AppInfoDataList");
+		writer.WriteInt(4);
+
+		writer.WriteBytes(new byte[16]);
+		writer.WriteTextUnicode(version);
+		writer.WriteBytes(new byte[16]);
+		writer.WriteTextUnicode("This is a comment from ACadSharp");
+		writer.WriteBytes(new byte[16]);
+		writer.WriteTextUnicode(
+			"<prop_set fmt_id=\"{f29f85e0-4ff9-1068-ab91-08002b27b3d9}\">" +
+			$"<prop id=\"8\"><string>{info.LastSavedBy}</string></prop>" +
+			$"<prop id=\"10\"><datetime>{stamp(info.ModifiedDate)}</datetime></prop>" +
+			"<prop id=\"258\"><string>ACadSharp</string></prop>" +
+			$"<prop id=\"259\"><string>{version}</string></prop>" +
+			$"<prop id=\"12\"><datetime>{stamp(info.CreatedDate)}</datetime></prop>" +
+			"</prop_set>");
+		writer.WriteBytes(new byte[16]);
+		writer.WriteTextUnicode(
+			$"<ProductInformation name =\"ACadSharp\" build_version=\"{version}\" registry_version=\"{version}\" install_id_string=\"ACadSharp\" registry_localeID=\"1033\"/>");
+
+		this._fileHeaderWriter.AddSection(DwgSectionDefinition.AppInfoHistory, stream, false, 0x600);
 	}
 
 	private void writeXrefManifest()

@@ -10,6 +10,11 @@ namespace ACadSharp.IO.DWG
 
 		public const string AppInfo = "AcDb:AppInfo";
 
+		/// <summary>
+		/// The list of applications that have saved the drawing. An R2007 drawing needs it.
+		/// </summary>
+		public const string AppInfoHistory = "AcDb:AppInfoHistory";
+
 		public const string AuxHeader = "AcDb:AuxHeader";
 
 		public const string Classes = "AcDb:Classes";

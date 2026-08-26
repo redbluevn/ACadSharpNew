@@ -65,6 +65,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 	{
 		[DwgSectionDefinition.FileDepList] = (0x6c4205ca, 1),
 		[DwgSectionDefinition.XrefManifest] = (0x7ae40662, 4),
+		[DwgSectionDefinition.AppInfoHistory] = (0x96de0737, 1),
 		[DwgSectionDefinition.AppInfo] = (0x3fa0043e, 1),
 		[DwgSectionDefinition.Preview] = (0x40aa0473, 1),
 		[DwgSectionDefinition.SummaryInfo] = (0x717a060f, 1),
@@ -101,6 +102,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		[DwgSectionDefinition.Header] = 0x800,
 		[DwgSectionDefinition.FileDepList] = 0x100,
 		[DwgSectionDefinition.XrefManifest] = 0xF800,
+		[DwgSectionDefinition.AppInfoHistory] = 0x600,
 	};
 
 	public override void AddSection(string name, MemoryStream stream, bool isCompressed, int decompsize = 0x7400)
@@ -404,7 +406,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 	private static readonly string[] _sectionMapOrder =
 	{
 		DwgSectionDefinition.XrefManifest,
-		"AcDb:AppInfoHistory",
+		DwgSectionDefinition.AppInfoHistory,
 		DwgSectionDefinition.FileDepList,
 		DwgSectionDefinition.AppInfo,
 		DwgSectionDefinition.Preview,
