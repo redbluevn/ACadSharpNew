@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace ACadSharp.IO.DWG.DwgStreamWriters;
 
@@ -220,7 +220,12 @@ internal static class Dwg21Crc64
 		return invertAtEnd ? ~crc : crc;
 	}
 
-	//The spec's 1-8 byte ordering table: within a block bytes run ascending, blocks in table order.
+	//The spec's 1-8 byte ordering table is RECURSIVE: it gives 4 as "2[2], 2[0]" and 8 as
+	//"4[4], 4[0]", and each sub-block expands by the same table. Flattened, 8 is therefore
+	//{6,7,4,5,2,3,0,1} - reading the table as a flat "blocks in table order, bytes ascending"
+	//gives {4,5,6,7,0,1,2,3} and every CRC over 8 bytes or more comes out wrong. Measured: with
+	//the flat order NO field of a real R2007 file's header reproduces; with this one, all of
+	//them do (check CRC, compressed CRC, header CRC64 and the four map CRCs, on four files).
 	private static readonly int[][] _order =
 	{
 		new int[0],
@@ -228,10 +233,10 @@ internal static class Dwg21Crc64
 		new[] { 0, 1 },
 		new[] { 0, 1, 2 },
 		new[] { 2, 3, 0, 1 },
-		new[] { 0, 1, 2, 3, 4 },
-		new[] { 0, 1, 2, 3, 4, 5 },
-		new[] { 0, 1, 2, 3, 4, 5, 6 },
-		new[] { 4, 5, 6, 7, 0, 1, 2, 3 },
+		new[] { 2, 3, 0, 1, 4 },
+		new[] { 2, 3, 0, 1, 4, 5 },
+		new[] { 2, 3, 0, 1, 4, 5, 6 },
+		new[] { 6, 7, 4, 5, 2, 3, 0, 1 },
 	};
 
 	private static ulong block(ulong crc, byte[] data, int start, int count, byteStep step)
@@ -386,13 +391,16 @@ internal static class Dwg21Crc64
 //function of the two randoms; validated against the values a real file stores.
 internal static class Dwg21FileHeaderCheckData
 {
+	//5.2.1.1.5 Encode: a rotate whose amount is the low 5 bits of the control value.
+	public static ulong Encode(ulong value, ulong control)
+	{
+		int shift = (int)(control & 0x1f);
+		return shift == 0 ? value : (value << shift) | (value >> (64 - shift));
+	}
+
 	public static (ulong normalCrc, ulong mirroredCrc) Calculate(ulong random1, ulong random2)
 	{
-		static ulong encode(ulong value, ulong control)
-		{
-			int shift = (int)(control & 0x1f);
-			return shift == 0 ? value : (value << shift) | (value >> (64 - shift));
-		}
+		static ulong encode(ulong value, ulong control) => Encode(value, control);
 
 		ulong[] buffer = new ulong[8];
 		buffer[0] = encode(random1, random2);

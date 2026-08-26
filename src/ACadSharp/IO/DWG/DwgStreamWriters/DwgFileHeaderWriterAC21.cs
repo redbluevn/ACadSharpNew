@@ -1,4 +1,4 @@
-using ACadSharp.IO.DWG.FileHeaders;
+﻿using ACadSharp.IO.DWG.FileHeaders;
 using CSUtilities.Converters;
 using System;
 using System.Collections.Generic;
@@ -46,6 +46,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		public ulong OffsetInSection;
 		public int DataLength;
 		public int CompressedLength;
+		public byte[] Payload;
 	}
 
 	private class WrittenSection
@@ -147,7 +148,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 			while (dataOffset == 0 || dataOffset < section.Data.Length)
 			{
 				int chunkLength = Math.Min(section.PageMaxSize, section.Data.Length - dataOffset);
-				byte[] pageBytes = this.buildDataPage(section.Data, dataOffset, chunkLength, encoding, rng, section.PageMaxSize, out long storedSize, out int compressedLength);
+				byte[] pageBytes = this.buildDataPage(section.Data, dataOffset, chunkLength, encoding, rng, section.PageMaxSize, out long storedSize, out int compressedLength, out byte[] payloadBytes);
 
 				var page = new WrittenPage
 				{
@@ -156,6 +157,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 					OffsetInSection = offsetInSection,
 					DataLength = chunkLength,
 					CompressedLength = compressedLength,
+					Payload = payloadBytes,
 				};
 				ws.Pages.Add(page);
 				dataPages.Add((page, pageBytes));
@@ -176,7 +178,8 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		int sectionMapId1 = nextId++;
 		int sectionMapId2 = nextId++;
 		byte[] sectionMapPage = buildSystemPage(sectionMapData, rng,
-			out ulong smComp, out ulong smFactor, out long smStored);
+			out ulong smComp, out ulong smFactor, out long smStored,
+			out ulong smCrcComp, out ulong smCrcUncomp);
 
 		//3. Pages map (two copies), after a two-id gap the way a minted real file numbers them.
 		//It lists every page including both of its own copies, and its stored size depends only
@@ -186,7 +189,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		int pagesMapId2 = nextId++;
 		int totalPageCount = dataPageCount + 4;
 		byte[] pagesMapProbe = new byte[totalPageCount * 16];
-		buildSystemPage(pagesMapProbe, null, out _, out _, out long pmStoredProbe);
+		buildSystemPage(pagesMapProbe, null, out _, out _, out long pmStoredProbe, out _, out _);
 
 		//File order, mirroring a minted minimal real file: the two pages map copies ADJACENT at
 		//relative offset 0, then the data pages, then the two section map copies at the end,
@@ -211,7 +214,8 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		}
 
 		byte[] pagesMapPage = buildSystemPage(pagesMapData, rng,
-			out ulong pmComp, out ulong pmFactor, out long pmStored);
+			out ulong pmComp, out ulong pmFactor, out long pmStored,
+			out ulong pmCrcComp, out ulong pmCrcUncomp);
 		if (pmStored != pmStoredProbe)
 		{
 			throw new InvalidOperationException("pages map sizing is not content independent");
@@ -246,7 +250,9 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 			sectionsAmount: (ulong)written.Count + 1,
 			sectionsMapId1: sectionMapId1, sectionsMapId2: sectionMapId2,
 			smComp: smComp, smUncomp: (ulong)sectionMapData.Length, smFactor: smFactor,
-			header2Offset: (ulong)headerCopyOffset);
+			header2Offset: (ulong)headerCopyOffset,
+			pmCrcComp: pmCrcComp, pmCrcUncomp: pmCrcUncomp,
+			smCrcComp: smCrcComp, smCrcUncomp: smCrcUncomp);
 
 		byte[] headerPage = this.buildHeaderPage(metadata, rng);
 
@@ -261,7 +267,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		this._stream.Write(headerPage, 0, headerPage.Length);
 	}
 
-	private byte[] buildDataPage(byte[] data, int offset, int length, ulong encoding, Dwg21RandomEncoder rng, int pageMaxSize, out long storedSize, out int compressedLength)
+	private byte[] buildDataPage(byte[] data, int offset, int length, ulong encoding, Dwg21RandomEncoder rng, int pageMaxSize, out long storedSize, out int compressedLength, out byte[] payloadBytes)
 	{
 		if (encoding == 4)
 		{
@@ -288,6 +294,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 			}
 
 			compressedLength = payload.Length;
+			payloadBytes = payload;
 			var rs = Dwg21ReedSolomon.DataPages;
 			int aligned = (payload.Length + 7) & ~7;
 			int blocks = (aligned + rs.K - 1) / rs.K;
@@ -307,6 +314,8 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 			//data needs. The section map's per-page size field carries the same padded value,
 			//and a page shorter than that leaves the two maps contradicting each other.
 			compressedLength = length;
+			payloadBytes = new byte[length];
+			Array.Copy(data, offset, payloadBytes, 0, length);
 			storedSize = align0x20(Math.Max(length, pageMaxSize));
 			byte[] page = new byte[storedSize];
 			Array.Copy(data, offset, page, 0, length);
@@ -316,7 +325,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 
 	//A system page: store-only compressed, then RS(255,239) interleaved with the data repeated
 	//`factor` times, padded to the page size the specification's formula assigns.
-	private static byte[] buildSystemPage(byte[] data, Dwg21RandomEncoder rng2, out ulong compressedSize, out ulong factor, out long storedSize)
+	private static byte[] buildSystemPage(byte[] data, Dwg21RandomEncoder rng2, out ulong compressedSize, out ulong factor, out long storedSize, out ulong crcCompressed, out ulong crcUncompressed)
 	{
 		byte[] compressed;
 		using (var ms = new MemoryStream())
@@ -326,6 +335,14 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		}
 
 		compressedSize = (ulong)compressed.Length;
+
+		//5.3: both CRCs of a system page are MIRRORED and seeded with UpdateSeed1 over the
+		//buffer's own length - verified byte-for-byte against four real files for the pages
+		//map and the section map, compressed and decompressed alike.
+		crcUncompressed = Dwg21Crc64.Mirrored(
+			Dwg21Crc64.UpdateSeed1(0, (uint)data.Length), data, 0, data.Length);
+		crcCompressed = Dwg21Crc64.Mirrored(
+			Dwg21Crc64.UpdateSeed1(0, (uint)compressed.Length), compressed, 0, compressed.Length);
 
 		int alignedComp = (compressed.Length + 7) & ~7;
 		long pageSize = getSystemPageSize(data.Length);
@@ -450,13 +467,18 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 				//Uncompressed size, then the compressed size the page really carries.
 				writeUlong((ulong)page.DataLength);
 				writeUlong((ulong)page.CompressedLength);
-				//Checksum and CRC: best effort, measured not to be load-bearing.
+				//5.4: the checksum is taken over the page's DECOMPRESSED data, the 64-bit CRC
+				//over the bytes the page really stores (compressed when they shrank), seeded
+				//from that stored length. Both verified against a real file's own values; both
+				//are load-bearing - flipping either one in the section map gets the file
+				//refused (the earlier "not load-bearing" reading came from probes that patched
+				//only the first of the two map copies).
 				uint checksum = Dwg21Checksum.GetCheckSum(0,
 					this.sectionChunk(section, page), 0, (uint)page.DataLength);
 				writeUlong(checksum);
 				writeUlong(Dwg21Crc64.Mirrored(
-					Dwg21Crc64.UpdateSeed1(0, (uint)page.DataLength),
-					this.sectionChunk(section, page), 0, page.DataLength));
+					Dwg21Crc64.UpdateSeed1(0, (uint)page.Payload.Length),
+					page.Payload, 0, page.Payload.Length));
 			}
 		}
 
@@ -487,7 +509,8 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		ulong pagesAmount, ulong pagesMaxId,
 		ulong sectionsAmount, int sectionsMapId1, int sectionsMapId2,
 		ulong smComp, ulong smUncomp, ulong smFactor,
-		ulong header2Offset)
+		ulong header2Offset,
+		ulong pmCrcComp, ulong pmCrcUncomp, ulong smCrcComp, ulong smCrcUncomp)
 	{
 		byte[] buffer = new byte[0x110];
 		using var ms = new MemoryStream(buffer, true);
@@ -495,7 +518,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 
 		writeUlong(0x70);                 //0x00 header size
 		writeUlong(fileSize);             //0x08
-		writeUlong(0);                    //0x10 PagesMapCrcCompressed - best effort below
+		writeUlong(pmCrcComp);            //0x10 PagesMapCrcCompressed
 		writeUlong(pmFactor);             //0x18 PagesMapCorrectionFactor
 		writeUlong(0);                    //0x20 PagesMapCrcSeed
 		writeUlong(pagesMap2Offset);      //0x28 Map2Offset - the second, distinct copy
@@ -509,17 +532,17 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		writeUlong(pagesMaxId);           //0x68 PagesMaxId
 		writeUlong(0x20);                 //0x70
 		writeUlong(0x40);                 //0x78
-		writeUlong(0);                    //0x80 PagesMapCrcUncompressed - best effort
+		writeUlong(pmCrcUncomp);          //0x80 PagesMapCrcUncompressed
 		writeUlong(0xf800);               //0x88
 		writeUlong(4);                    //0x90
 		writeUlong(1);                    //0x98
 		writeUlong(sectionsAmount);       //0xA0
-		writeUlong(0);                    //0xA8 SectionsMapCrcUncompressed
+		writeUlong(smCrcUncomp);          //0xA8 SectionsMapCrcUncompressed
 		writeUlong(smComp);               //0xB0 SectionsMapSizeCompressed
 		writeUlong((ulong)sectionsMapId2);//0xB8 SectionsMap2Id
 		writeUlong((ulong)sectionsMapId1);//0xC0 SectionsMapId
 		writeUlong(smUncomp);             //0xC8 SectionsMapSizeUncompressed
-		writeUlong(0);                    //0xD0 SectionsMapCrcCompressed
+		writeUlong(smCrcComp);            //0xD0 SectionsMapCrcCompressed
 		writeUlong(smFactor);             //0xD8 SectionsMapCorrectionFactor
 		writeUlong(0);                    //0xE0 SectionsMapCrcSeed
 		writeUlong(0x60100);              //0xE8 StreamVersion
@@ -551,10 +574,17 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 
 		//5.2.1.5: one block of [check CRC, check value, compressed CRC, ComprLen, Length2,
 		//compressed data, pad to 8], repeated within 3 x 239 bytes, remainder random-padded.
+		//5.2.1.4: the checking sequence is the pair [checkValue, Encode(checkValue, checkValue)]
+		//in little endian, CRC'd normal with UpdateSeed1 over its 16 bytes. 5.2.1.3's compressed
+		//CRC is normal too but seeded with UpdateSeed2. Both reproduce a real file's own values.
 		ulong checkValue = rng.NextUInt64();
-		(ulong checkCrc, _) = Dwg21FileHeaderCheckData.Calculate(checkValue, checkValue);
+		byte[] sequence = new byte[16];
+		BitConverter.GetBytes(checkValue).CopyTo(sequence, 0);
+		BitConverter.GetBytes(Dwg21FileHeaderCheckData.Encode(checkValue, checkValue)).CopyTo(sequence, 8);
+		ulong checkCrc = Dwg21Crc64.Normal(
+			Dwg21Crc64.UpdateSeed1(0, (uint)sequence.Length), sequence, 0, sequence.Length);
 		ulong compressedCrc = Dwg21Crc64.Normal(
-			Dwg21Crc64.UpdateSeed1(0, (uint)compressed.Length), compressed, 0, compressed.Length);
+			Dwg21Crc64.UpdateSeed2(0, (uint)compressed.Length), compressed, 0, compressed.Length);
 
 		int blockLength = (32 + compressed.Length + 7) & ~7;
 		var rs = Dwg21ReedSolomon.SystemPages;
@@ -571,8 +601,8 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 			BitConverter.GetBytes(checkCrc).CopyTo(pre, b + 0);
 			BitConverter.GetBytes(checkValue).CopyTo(pre, b + 8);
 			BitConverter.GetBytes(compressedCrc).CopyTo(pre, b + 16);
-			BitConverter.GetBytes(compressed.Length).CopyTo(pre, b + 24);
-			BitConverter.GetBytes(metadata.Length).CopyTo(pre, b + 28);
+			//One Int64: a real file carries the compressed size here and zero in the upper half.
+			BitConverter.GetBytes((long)compressed.Length).CopyTo(pre, b + 24);
 			compressed.CopyTo(pre, b + 32);
 		}
 
