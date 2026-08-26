@@ -244,6 +244,20 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		long headerCopyOffset = body.Length;
 
 		//5. File header metadata (0x110) - now every number is known.
+		//The seven values a real file takes from the random encoder, in the order it takes them.
+		//Measured on a real R2007 file: from its stored RandomSeed the stream reproduces, back to
+		//back, SectionsMapCrcSeed, PagesMapCrcSeed, the check data's random1 and random2, the
+		//check data's encoded seed, CrcSeedEncoded and the header block's check value - seven
+		//values, exact. They must all come from ONE encoder: a second encoder over the same seed
+		//restarts the stream and makes the file disagree with the seed it declares.
+		ulong sectionsMapCrcSeed = rng.Encode(0);
+		ulong pagesMapCrcSeed = rng.Encode(0);
+		ulong checkRandom1 = rng.NextUInt64();
+		ulong checkRandom2 = rng.NextUInt64();
+		ulong checkEncodedSeed = rng.Encode(0);
+		ulong crcSeedEncoded = rng.Encode(0);
+		ulong headerCheckValue = rng.NextUInt64();
+
 		ulong fileSize = 0x480UL + (ulong)body.Length + 0x400UL;
 		byte[] metadata = this.buildMetadata(
 			fileSize, rngSeed: 0x4D6F7265447767UL,
@@ -256,9 +270,12 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 			smComp: smComp, smUncomp: (ulong)sectionMapData.Length, smFactor: smFactor,
 			header2Offset: (ulong)headerCopyOffset,
 			pmCrcComp: pmCrcComp, pmCrcUncomp: pmCrcUncomp,
-			smCrcComp: smCrcComp, smCrcUncomp: smCrcUncomp);
+			smCrcComp: smCrcComp, smCrcUncomp: smCrcUncomp,
+			pagesMapCrcSeed: pagesMapCrcSeed, sectionsMapCrcSeed: sectionsMapCrcSeed,
+			crcSeedEncoded: crcSeedEncoded);
 
-		byte[] headerPage = this.buildHeaderPage(metadata, rng);
+		byte[] headerPage = this.buildHeaderPage(
+			metadata, rng, headerCheckValue, checkRandom1, checkRandom2, checkEncodedSeed);
 
 		//6. Assemble the stream: meta, header page, body, header page copy.
 		this._stream.Position = 0;
@@ -515,7 +532,8 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		ulong sectionsAmount, int sectionsMapId1, int sectionsMapId2,
 		ulong smComp, ulong smUncomp, ulong smFactor,
 		ulong header2Offset,
-		ulong pmCrcComp, ulong pmCrcUncomp, ulong smCrcComp, ulong smCrcUncomp)
+		ulong pmCrcComp, ulong pmCrcUncomp, ulong smCrcComp, ulong smCrcUncomp,
+		ulong pagesMapCrcSeed, ulong sectionsMapCrcSeed, ulong crcSeedEncoded)
 	{
 		byte[] buffer = new byte[0x110];
 		using var ms = new MemoryStream(buffer, true);
@@ -525,7 +543,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		writeUlong(fileSize);             //0x08
 		writeUlong(pmCrcComp);            //0x10 PagesMapCrcCompressed
 		writeUlong(pmFactor);             //0x18 PagesMapCorrectionFactor
-		writeUlong(0);                    //0x20 PagesMapCrcSeed
+		writeUlong(pagesMapCrcSeed);      //0x20 PagesMapCrcSeed - crcSeed through the encoder
 		writeUlong(pagesMap2Offset);      //0x28 Map2Offset - the second, distinct copy
 		writeUlong((ulong)pagesMapId2);   //0x30 Map2Id
 		writeUlong(pagesMap1Offset);      //0x38 PagesMapOffset - a real file puts this at 0
@@ -549,17 +567,12 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		writeUlong(smUncomp);             //0xC8 SectionsMapSizeUncompressed
 		writeUlong(smCrcComp);            //0xD0 SectionsMapCrcCompressed
 		writeUlong(smFactor);             //0xD8 SectionsMapCorrectionFactor
-		writeUlong(0);                    //0xE0 SectionsMapCrcSeed
+		writeUlong(sectionsMapCrcSeed);   //0xE0 SectionsMapCrcSeed - crcSeed through the encoder
 		writeUlong(0x60100);              //0xE8 StreamVersion
 		writeUlong(0);                    //0xF0 CrcSeed
-		writeUlong(0);                    //0xF8 CrcSeedEncoded - filled with the encoder below
+		writeUlong(crcSeedEncoded);       //0xF8 CrcSeedEncoded
 		writeUlong(rngSeed);              //0x100 RandomSeed
 		writeUlong(0);                    //0x108 Header CRC64 - filled after the fields
-
-		//Best-effort self-consistency for the fields a strict reader might look at.
-		var rng = new Dwg21RandomEncoder(rngSeed);
-		ulong seedEncoded = rng.Encode(0);
-		BitConverter.GetBytes(seedEncoded).CopyTo(buffer, 0xF8);
 
 		ulong crcSeed = Dwg21Crc64.UpdateSeed2(0, (uint)buffer.Length);
 		ulong headerCrc = Dwg21Crc64.Normal(crcSeed, buffer, 0, buffer.Length);
@@ -568,7 +581,8 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		return buffer;
 	}
 
-	private byte[] buildHeaderPage(byte[] metadata, Dwg21RandomEncoder rng)
+	private byte[] buildHeaderPage(byte[] metadata, Dwg21RandomEncoder rng,
+		ulong checkValue, ulong random1, ulong random2, ulong encodedSeed)
 	{
 		byte[] compressed;
 		using (var ms = new MemoryStream())
@@ -582,7 +596,6 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		//5.2.1.4: the checking sequence is the pair [checkValue, Encode(checkValue, checkValue)]
 		//in little endian, CRC'd normal with UpdateSeed1 over its 16 bytes. 5.2.1.3's compressed
 		//CRC is normal too but seeded with UpdateSeed2. Both reproduce a real file's own values.
-		ulong checkValue = rng.NextUInt64();
 		byte[] sequence = new byte[16];
 		BitConverter.GetBytes(checkValue).CopyTo(sequence, 0);
 		BitConverter.GetBytes(Dwg21FileHeaderCheckData.Encode(checkValue, checkValue)).CopyTo(sequence, 8);
@@ -620,9 +633,8 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		rng.FillPadding(page, encoded.Length, 0x400 - 0x28 - encoded.Length);
 
 		//5.2.1.1.5 check data tail: normal CRC, mirrored CRC, random1, random2, encoded seed.
-		ulong random1 = rng.NextUInt64();
-		ulong random2 = rng.NextUInt64();
-		ulong encodedSeed = rng.Encode(0);
+		//Both CRCs reproduce a real file's own values from its random1/random2, so the pair is
+		//verified rather than guessed.
 		(ulong normalCrc, ulong mirroredCrc) = Dwg21FileHeaderCheckData.Calculate(random1, random2);
 		BitConverter.GetBytes(normalCrc).CopyTo(page, 0x3D8);
 		BitConverter.GetBytes(mirroredCrc).CopyTo(page, 0x3E0);
