@@ -645,7 +645,12 @@ internal partial class DwgObjectReader : DwgSectionIO
 				case CadValueType.Buffer:
 				case CadValueType.ResultBuffer:
 				default:
-					throw new NotImplementedException();
+					//A buffer value carries no length this reader knows how to walk, so the field
+					//after it cannot be found. Everything read so far belongs to a table, and the
+					//failsafe drops the whole TABLECONTENT - which is the whole table - so the
+					//message has to say which value did it.
+					throw new NotImplementedException(
+						$"Table cell value of type {value.ValueType} is not decoded; the fields after it cannot be located.");
 			}
 		}
 

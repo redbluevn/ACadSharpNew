@@ -43,6 +43,14 @@ internal partial class DwgObjectWriter : DwgSectionIO
 
 	private bool skipEntry(NonGraphicalObject entry, out bool notify)
 	{
+		//Same rule as isEntitySupported: an object an earlier pass could not write is left out
+		//before anything can point at it. See DwgObjectWriter.Excluded.
+		if (this.Excluded.Contains(entry.Handle))
+		{
+			notify = false;
+			return true;
+		}
+
 		if (!entry.IsValid(CadFileFormat.DWG, this._version))
 		{
 			notify = false;
@@ -1925,6 +1933,11 @@ internal partial class DwgObjectWriter : DwgSectionIO
 	}
 
 	private void writeObject(NonGraphicalObject obj)
+	{
+		this.writeFailsafe(obj, () => this.writeObjectBody(obj));
+	}
+
+	private void writeObjectBody(NonGraphicalObject obj)
 	{
 		if (this.skipEntry(obj, out bool notify))
 		{

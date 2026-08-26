@@ -389,6 +389,12 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 	protected void writeObject<T>(T co)
 		where T : CadObject
 	{
+		this.writeFailsafe(co, () => this.writeObjectBody(co));
+	}
+
+	private void writeObjectBody<T>(T co)
+		where T : CadObject
+	{
 		if (!this.isObjectSupported(co))
 		{
 			return;

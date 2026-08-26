@@ -369,19 +369,80 @@ public class DwgWriter : CadWriterBase<DwgWriterConfiguration>
 		this._fileHeaderWriter.AddSection(DwgSectionDefinition.Header, stream, true);
 	}
 
+	/// <summary>
+	/// Writes the object section, and when <see cref="CadWriterConfiguration.Failsafe"/> is on,
+	/// writes it again without whatever could not be written.
+	/// </summary>
+	/// <remarks>
+	/// Why a second pass rather than simply catching the failure and carrying on: at R13-R2000 the
+	/// entities of a block form a linked list and the block record names its first and last, so an
+	/// entity dropped part way through leaves its neighbours pointing at a handle no object has.
+	/// AutoCAD 2027 on a five line drawing with the middle line unwritable: <b>AC1015 refused to
+	/// open the file</b>, AC1018 and AC1032 opened with one AUDIT error each - a file that will not
+	/// open is not an improvement on no file. Excluding the entity BEFORE the section is written
+	/// runs it through the same filter as everything else the writer leaves out, and the chain never
+	/// names it. Measured again afterwards: 0 errors at all three, and the drawing keeps the other
+	/// four lines.
+	///
+	/// The section is a MemoryStream built here and handed to the file header writer at the end, so
+	/// starting it over costs nothing but the pass itself - and that pass is only paid when
+	/// something actually fails, which is never in a normal write.
+	/// </remarks>
 	private void writeObjects()
 	{
-		MemoryStream stream = new MemoryStream();
-		DwgObjectWriter writer = new DwgObjectWriter(
-			stream,
-			this._document,
-			this._encoding,
-			this.Configuration.WriteXRecords,
-			this.Configuration.WriteXData,
-			this.Configuration.WriteShapes,
-			this.Configuration.WriteDynamicBlockData);
-		writer.OnNotification += this.triggerNotification;
-		writer.Write();
+		HashSet<ulong> excluded = new();
+		Dictionary<ulong, string> failures = new();
+
+		//A bound, not an expectation: each pass excludes at least one more handle than the last, so
+		//it cannot spin. Anything past this many distinct failures is a broken document, and the
+		//exception is the honest answer to it.
+		const int maxPasses = 8;
+
+		MemoryStream stream;
+		DwgObjectWriter writer;
+		for (int pass = 1; ; pass++)
+		{
+			stream = new MemoryStream();
+			writer = new DwgObjectWriter(
+				stream,
+				this._document,
+				this._encoding,
+				this.Configuration.WriteXRecords,
+				this.Configuration.WriteXData,
+				this.Configuration.WriteShapes,
+				this.Configuration.WriteDynamicBlockData,
+				this.Configuration.Failsafe,
+				excluded);
+
+			//Only the pass that ends up in the file reports: an earlier pass would say everything
+			//it has to say a second time.
+			writer.OnNotification += this.triggerNotification;
+			writer.Write();
+
+			if (writer.Failures.Count == 0)
+			{
+				break;
+			}
+
+			foreach (var failure in writer.Failures)
+			{
+				failures[failure.Key] = failure.Value;
+				excluded.Add(failure.Key);
+			}
+
+			if (pass >= maxPasses)
+			{
+				throw new InvalidOperationException(
+					$"{failures.Count} objects could not be written after {maxPasses} passes; the document cannot be saved.");
+			}
+
+			writer.OnNotification -= this.triggerNotification;
+		}
+
+		foreach (string message in failures.Values)
+		{
+			this.triggerNotification(message, NotificationType.Error);
+		}
 
 		this._handlesMap = writer.Map;
 

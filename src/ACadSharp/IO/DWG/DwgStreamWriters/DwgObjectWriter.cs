@@ -26,6 +26,37 @@ internal partial class DwgObjectWriter : DwgSectionIO
 
 	public override string SectionName => DwgSectionDefinition.AcDbObjects;
 
+	/// <summary>
+	/// Leave out an object that cannot be written instead of losing the file - see
+	/// <see cref="CadWriterConfiguration.Failsafe"/>.
+	/// </summary>
+	public bool Failsafe { get; }
+
+	/// <summary>
+	/// Handles this pass must leave out, found by the pass before it.
+	/// </summary>
+	/// <remarks>
+	/// Catching the failure and moving on is not enough on its own, and AutoCAD said so: at
+	/// R13-R2000 the entities of a block are a linked list, each naming the handle of the one before
+	/// and after, and the block record names the first and the last. An entity dropped mid-list
+	/// leaves its neighbours pointing at a handle no object has - measured on a five line drawing
+	/// with the middle one unwritable: <b>AC1015 did not open at all</b>, AC1018 and AC1032 opened
+	/// with one AUDIT error each. Only DXF was clean.
+	///
+	/// So the failure is not repaired after the fact, it is <b>excluded before the fact</b>: the
+	/// first pass finds what cannot be written, and the section is written again with those handles
+	/// filtered out at <c>isEntitySupported</c> and <c>skipEntry</c> - the same two places that
+	/// already keep the chain and the first/last handles consistent for everything else the writer
+	/// leaves out. The extra pass is paid only when something actually fails, which is never in a
+	/// normal write.
+	/// </remarks>
+	public HashSet<ulong> Excluded { get; }
+
+	/// <summary>
+	/// What this pass could not write: handle to the message the caller should be told.
+	/// </summary>
+	public Dictionary<ulong, string> Failures { get; } = new();
+
 	public bool WriteDynamicParameters { get; }
 
 	public bool WriteShapes { get; }
@@ -59,7 +90,9 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		bool writeXRecords = true,
 		bool writeXData = true,
 		bool writeShapes = true,
-		bool writeDynamicParameters = true) : base(document.Header.Version)
+		bool writeDynamicParameters = true,
+		bool failsafe = true,
+		HashSet<ulong> excluded = null) : base(document.Header.Version)
 	{
 		this._stream = stream;
 		this._document = document;
@@ -70,6 +103,53 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		this.WriteXData = writeXData;
 		this.WriteShapes = writeShapes;
 		this.WriteDynamicParameters = writeDynamicParameters;
+		this.Failsafe = failsafe;
+		this.Excluded = excluded ?? new HashSet<ulong>();
+	}
+
+	/// <summary>
+	/// Runs one object's write and, when <see cref="Failsafe"/> is on, leaves that object out
+	/// instead of letting the exception take the whole file with it.
+	/// </summary>
+	/// <remarks>
+	/// This is safe because of where the object body is built: every write goes into the per-object
+	/// buffer <c>_msmain</c>, which <c>writeCommonData</c> resets before each object, and only
+	/// <c>registerObject</c> copies it into the file. An object that throws on the way therefore has
+	/// nothing in the file to undo, and the next object starts from a clean buffer.
+	///
+	/// What it cannot repair is a handle in another object still pointing at the one left out. That
+	/// is a dangling reference, and AUDIT is what catches it - which is still a far better position
+	/// than the one before this existed, where the caller got no drawing at all.
+	/// </remarks>
+	private void writeFailsafe(CadObject cadObject, Action write)
+	{
+		if (!this.Failsafe)
+		{
+			write();
+			return;
+		}
+
+		try
+		{
+			write();
+		}
+		catch (InvalidOperationException)
+		{
+			//NOT caught: this is how a writer says the DOCUMENT is inconsistent, not that the
+			//library cannot do something - a spline with a weight for some of its control points
+			//and not others, for one. The caller can fix that, and silently leaving the entity out
+			//would hide a fault in their own data. The rule and the tests for it predate this
+			//failsafe (SplineWeightsTests), and swallowing them was the first thing this change got
+			//wrong: the suite went red at exactly those two, which is the whole point of running it.
+			throw;
+		}
+		catch (Exception ex)
+		{
+			//Recorded, not reported: the caller is told once, by the writer that owns the passes,
+			//after the last one. Reporting here would say it again for every pass.
+			this.Failures[cadObject.Handle] =
+				$"{cadObject.GetType().Name} {cadObject.Handle} could not be written and was left out of the file: {ex.Message}";
+		}
 	}
 
 	public void Write()
@@ -138,6 +218,14 @@ internal partial class DwgObjectWriter : DwgSectionIO
 	//know whether an entity will be in the file - a hatch boundary handle, for one.
 	private bool isEntitySupported(Entity entity, bool notify = true)
 	{
+		//An earlier pass proved this one cannot be written. Leaving it out HERE, rather than
+		//catching it later, is what keeps the R13-R2000 entity chain and the block's first/last
+		//handles from naming an object that is not in the file - see Excluded.
+		if (this.Excluded.Contains(entity.Handle))
+		{
+			return false;
+		}
+
 		if (!entity.IsValid(CadFileFormat.DWG, this._version))
 		{
 			if (notify)

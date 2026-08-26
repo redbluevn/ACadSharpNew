@@ -3178,8 +3178,18 @@ namespace ACadSharp.IO.DWG
 					material.DiffuseMapFileName = this._mergedReaders.ReadVariableText();
 					break;
 				case MapSource.Procedural:
-					//AcGiMaterialMap::Source Enumeration contains the missing type
-					throw new NotImplementedException();
+					//A procedural map is a generated texture, and what follows it in the record is a
+					//structure whose layout is not written down anywhere here - AcGiMaterialMap's
+					//Source enumeration names the kind but not the payload. Reading on would not
+					//skip it, it would read the next field out of the middle of it and carry the
+					//error through the rest of the object, so this stops.
+					//
+					//The reader's own failsafe (see readObjects) turns this into an Error
+					//notification and leaves the material out; the message has to name the field,
+					//because "could not read MATERIAL" alone sends the next reader hunting through
+					//two thousand lines for it.
+					throw new NotImplementedException(
+						$"Material {material.Handle:X}: the Diffuse map is procedural, and the payload of a procedural map is not decoded.");
 			}
 
 			#endregion Diffuse
@@ -3223,8 +3233,18 @@ namespace ACadSharp.IO.DWG
 					material.SpecularMapFileName = this._mergedReaders.ReadVariableText();
 					break;
 				case MapSource.Procedural:
-					//AcGiMaterialMap::Source Enumeration contains the missing type
-					throw new NotImplementedException();
+					//A procedural map is a generated texture, and what follows it in the record is a
+					//structure whose layout is not written down anywhere here - AcGiMaterialMap's
+					//Source enumeration names the kind but not the payload. Reading on would not
+					//skip it, it would read the next field out of the middle of it and carry the
+					//error through the rest of the object, so this stops.
+					//
+					//The reader's own failsafe (see readObjects) turns this into an Error
+					//notification and leaves the material out; the message has to name the field,
+					//because "could not read MATERIAL" alone sends the next reader hunting through
+					//two thousand lines for it.
+					throw new NotImplementedException(
+						$"Material {material.Handle:X}: the Specular map is procedural, and the payload of a procedural map is not decoded.");
 			}
 
 			//Ambient and Diffuse don't have specular, this is at the end for specular
@@ -3258,8 +3278,18 @@ namespace ACadSharp.IO.DWG
 					material.ReflectionMapFileName = this._mergedReaders.ReadVariableText();
 					break;
 				case MapSource.Procedural:
-					//AcGiMaterialMap::Source Enumeration contains the missing type
-					throw new NotImplementedException();
+					//A procedural map is a generated texture, and what follows it in the record is a
+					//structure whose layout is not written down anywhere here - AcGiMaterialMap's
+					//Source enumeration names the kind but not the payload. Reading on would not
+					//skip it, it would read the next field out of the middle of it and carry the
+					//error through the rest of the object, so this stops.
+					//
+					//The reader's own failsafe (see readObjects) turns this into an Error
+					//notification and leaves the material out; the message has to name the field,
+					//because "could not read MATERIAL" alone sends the next reader hunting through
+					//two thousand lines for it.
+					throw new NotImplementedException(
+						$"Material {material.Handle:X}: the Reflection map is procedural, and the payload of a procedural map is not decoded.");
 			}
 
 			//Opacity BD 140
@@ -3292,8 +3322,18 @@ namespace ACadSharp.IO.DWG
 					material.OpacityMapFileName = this._mergedReaders.ReadVariableText();
 					break;
 				case MapSource.Procedural:
-					//AcGiMaterialMap::Source Enumeration contains the missing type
-					throw new NotImplementedException();
+					//A procedural map is a generated texture, and what follows it in the record is a
+					//structure whose layout is not written down anywhere here - AcGiMaterialMap's
+					//Source enumeration names the kind but not the payload. Reading on would not
+					//skip it, it would read the next field out of the middle of it and carry the
+					//error through the rest of the object, so this stops.
+					//
+					//The reader's own failsafe (see readObjects) turns this into an Error
+					//notification and leaves the material out; the message has to name the field,
+					//because "could not read MATERIAL" alone sends the next reader hunting through
+					//two thousand lines for it.
+					throw new NotImplementedException(
+						$"Material {material.Handle:X}: the Opacity map is procedural, and the payload of a procedural map is not decoded.");
 			}
 
 			#endregion Opacity
@@ -3323,8 +3363,18 @@ namespace ACadSharp.IO.DWG
 					material.BumpMapFileName = this._mergedReaders.ReadVariableText();
 					break;
 				case MapSource.Procedural:
-					//AcGiMaterialMap::Source Enumeration contains the missing type
-					throw new NotImplementedException();
+					//A procedural map is a generated texture, and what follows it in the record is a
+					//structure whose layout is not written down anywhere here - AcGiMaterialMap's
+					//Source enumeration names the kind but not the payload. Reading on would not
+					//skip it, it would read the next field out of the middle of it and carry the
+					//error through the rest of the object, so this stops.
+					//
+					//The reader's own failsafe (see readObjects) turns this into an Error
+					//notification and leaves the material out; the message has to name the field,
+					//because "could not read MATERIAL" alone sends the next reader hunting through
+					//two thousand lines for it.
+					throw new NotImplementedException(
+						$"Material {material.Handle:X}: the Bump map is procedural, and the payload of a procedural map is not decoded.");
 			}
 
 			//RefractionIndex BD 145
@@ -3357,8 +3407,18 @@ namespace ACadSharp.IO.DWG
 					material.RefractionMapFileName = this._mergedReaders.ReadVariableText();
 					break;
 				case MapSource.Procedural:
-					//AcGiMaterialMap::Source Enumeration contains the missing type
-					throw new NotImplementedException();
+					//A procedural map is a generated texture, and what follows it in the record is a
+					//structure whose layout is not written down anywhere here - AcGiMaterialMap's
+					//Source enumeration names the kind but not the payload. Reading on would not
+					//skip it, it would read the next field out of the middle of it and carry the
+					//error through the rest of the object, so this stops.
+					//
+					//The reader's own failsafe (see readObjects) turns this into an Error
+					//notification and leaves the material out; the message has to name the field,
+					//because "could not read MATERIAL" alone sends the next reader hunting through
+					//two thousand lines for it.
+					throw new NotImplementedException(
+						$"Material {material.Handle:X}: the Refraction map is procedural, and the payload of a procedural map is not decoded.");
 			}
 
 			#endregion Refraction

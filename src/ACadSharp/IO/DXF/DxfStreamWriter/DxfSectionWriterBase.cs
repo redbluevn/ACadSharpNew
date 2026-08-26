@@ -45,6 +45,61 @@ internal abstract partial class DxfSectionWriterBase
 		this._writer.Write(DxfCode.Start, DxfFileToken.EndSection);
 	}
 
+	/// <summary>
+	/// Runs one record's write and, when <see cref="CadWriterConfiguration.Failsafe"/> is on, leaves
+	/// that record out instead of letting the exception take the whole file with it.
+	/// </summary>
+	/// <remarks>
+	/// DXF writes its codes straight to the text stream, so unlike the DWG writer it has nothing to
+	/// undo with - a record that throws half way through would otherwise be left in the file as a
+	/// fragment, which is worse than either outcome. The record is therefore built in a
+	/// <see cref="DxfBufferedWriter"/> and only replayed into the file once it is complete.
+	///
+	/// Neither writer had any failsafe at all before this: a single object of a kind nobody
+	/// implemented threw out of <c>Write()</c> and the caller got no file. The application writes
+	/// DXF and builds its entities in code, which is precisely the path where an unexpected object
+	/// turns up.
+	/// </remarks>
+	protected void writeFailsafe(CadObject cadObject, Action write)
+	{
+		if (!this.Configuration.Failsafe)
+		{
+			write();
+			return;
+		}
+
+		IDxfStreamWriter real = this._writer;
+		DxfBufferedWriter buffer = new DxfBufferedWriter(real);
+		this._writer = buffer;
+		try
+		{
+			write();
+			buffer.Commit();
+		}
+		catch (InvalidOperationException)
+		{
+			//NOT caught: this is how a writer says the DOCUMENT is inconsistent, not that the
+			//library cannot do something - a spline with a weight for some of its control points
+			//and not others, for one. The caller can fix that, and silently leaving the entity out
+			//would hide a fault in their own data. The rule and the tests for it predate this
+			//failsafe (SplineWeightsTests), and swallowing them was the first thing this change got
+			//wrong: the suite went red at exactly those two, which is the whole point of running it.
+			throw;
+		}
+		catch (Exception ex)
+		{
+			buffer.Discard();
+			this.notify(
+				$"{cadObject.GetType().Name} {cadObject.Handle} could not be written and was left out of the file: {ex.Message}",
+				NotificationType.Error,
+				ex);
+		}
+		finally
+		{
+			this._writer = real;
+		}
+	}
+
 	protected void writeCadValue(CadValue value)
 	{
 		this._writer.Write(93, value.Flags);

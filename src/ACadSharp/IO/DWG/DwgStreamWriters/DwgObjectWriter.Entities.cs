@@ -488,6 +488,11 @@ internal partial class DwgObjectWriter : DwgSectionIO
 
 	private void writeEntity(Entity entity)
 	{
+		this.writeFailsafe(entity, () => this.writeEntityBody(entity));
+	}
+
+	private void writeEntityBody(Entity entity)
+	{
 		List<Entity> children = new List<Entity>();
 		Seqend seqend = null;
 

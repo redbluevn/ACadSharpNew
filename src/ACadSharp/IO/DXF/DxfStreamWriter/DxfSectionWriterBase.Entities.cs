@@ -14,6 +14,12 @@ internal abstract partial class DxfSectionWriterBase
 	protected void writeEntity<T>(T entity)
 		where T : Entity
 	{
+		this.writeFailsafe(entity, () => this.writeEntityBody(entity));
+	}
+
+	private void writeEntityBody<T>(T entity)
+		where T : Entity
+	{
 		if (!this.isEntitySupported(entity))
 		{
 			return;
