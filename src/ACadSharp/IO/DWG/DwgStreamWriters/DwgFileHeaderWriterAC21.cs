@@ -108,6 +108,12 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 	public override void AddSection(string name, MemoryStream stream, bool isCompressed, int decompsize = 0x7400)
 	{
 		byte[] data = stream.ToArray();
+		string dirEnv = System.Environment.GetEnvironmentVariable("MOREDWG_SECTION_DIR");
+		if (!string.IsNullOrEmpty(dirEnv))
+		{
+			string f0 = System.IO.Path.Combine(dirEnv, name.Replace(':', '_') + ".bin");
+			if (System.IO.File.Exists(f0)) { data = System.IO.File.ReadAllBytes(f0); }
+		}
 		int pageMax = _canonicalPageSize.TryGetValue(name, out int canonical) ? canonical : decompsize;
 
 		//A section stored raw (encoding 1) gets a page sized to its own data, rounded up to the
@@ -131,11 +137,16 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		});
 	}
 
+	private string _probeName;
+	private int _probeIndex;
+
 	public override void WriteFile()
 	{
 		//One source of truth: the value stored as RandomSeed must be the one the encoder ran from,
 		//or the file claims a seed that does not produce its own encoded fields.
 		ulong randomSeed = 0x4D6F7265447767UL;
+		string sEnv = System.Environment.GetEnvironmentVariable("MOREDWG_R2007_SEED");
+		if (!string.IsNullOrEmpty(sEnv)) { randomSeed = System.Convert.ToUInt64(sEnv, 16); }
 		var rng = new Dwg21RandomEncoder(randomSeed);
 		var written = new List<WrittenSection>();
 		//A minted minimal file from AutoCAD 2027 assigns ids 3.. to the data pages in file
@@ -148,11 +159,13 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		//mirroring a real file, where the maps carry the highest ids but the pages map sits FIRST
 		//in the stream at relative offset 0.
 		var dataPages = new List<(WrittenPage page, byte[] bytes)>();
+		var dataPageSection = new List<string>();
 		foreach (PendingSection section in orderPages(this._sections))
 		{
-			(ulong hash, ulong encoding) = _sectionProperties.TryGetValue(section.Name, out var p)
-				? p
-				: (0UL, 1UL);
+			//The hash is computed, not looked up: it is the checksum routine over the name as
+			//UTF-16, started at (character count, 0) - see Dwg21Checksum.GetSectionNameHash.
+			ulong encoding = _sectionProperties.TryGetValue(section.Name, out var p) ? p.encoding : 1UL;
+			ulong hash = Dwg21Checksum.GetSectionNameHash(section.Name);
 
 			var ws = new WrittenSection { Source = section, HashCode = hash, Encoding = encoding };
 			written.Add(ws);
@@ -162,6 +175,14 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 			while (dataOffset == 0 || dataOffset < section.Data.Length)
 			{
 				int chunkLength = Math.Min(section.PageMaxSize, section.Data.Length - dataOffset);
+				string splitEnv = System.Environment.GetEnvironmentVariable("MOREDWG_OBJ_SPLIT");
+				if (!string.IsNullOrEmpty(splitEnv) && section.Name == DwgSectionDefinition.AcDbObjects)
+				{
+					string[] sp = splitEnv.Split(',');
+					int si = ws.Pages.Count;
+					if (si < sp.Length) { chunkLength = Math.Min(int.Parse(sp[si]), section.Data.Length - dataOffset); }
+				}
+				_probeName = section.Name; _probeIndex = ws.Pages.Count;
 				byte[] pageBytes = this.buildDataPage(section.Data, dataOffset, chunkLength, encoding, rng, section.PageMaxSize, out long storedSize, out int compressedLength, out byte[] payloadBytes);
 
 				var page = new WrittenPage
@@ -175,6 +196,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 				};
 				ws.Pages.Add(page);
 				dataPages.Add((page, pageBytes));
+				dataPageSection.Add(section.Name);
 
 				offsetInSection += (ulong)chunkLength;
 				dataOffset += chunkLength;
@@ -183,6 +205,23 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 					break; //an empty section still gets one page
 				}
 			}
+		}
+
+		string physEnv = System.Environment.GetEnvironmentVariable("MOREDWG_PHYS_ORDER");
+		if (!string.IsNullOrEmpty(physEnv))
+		{
+			var slots = new List<int>();
+			for (int i = 0; i < dataPageSection.Count; i++)
+			{
+				if (dataPageSection[i] == DwgSectionDefinition.AcDbObjects) { slots.Add(i); }
+			}
+			var perm = physEnv.Split(',').Select(int.Parse).ToList();
+			var orig = slots.Select(i => dataPages[i]).ToList();
+			for (int j = 0; j < slots.Count && j < perm.Count; j++) { dataPages[slots[j]] = orig[perm[j]]; }
+			//AutoCAD numbers the data pages in FILE order; renumber after the permutation so both
+			//hold at once - the twin never had them right together before.
+			int renum = 3;
+			foreach (var dp in dataPages) { dp.page.Id = renum++; }
 		}
 
 		int dataPageCount = dataPages.Count;
@@ -324,6 +363,12 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 				Array.Copy(data, offset, payload, 0, length);
 			}
 
+			string pageDir = System.Environment.GetEnvironmentVariable("MOREDWG_PAGE_DIR");
+			if (!string.IsNullOrEmpty(pageDir) && _probeName != null)
+			{
+				string pf = System.IO.Path.Combine(pageDir, _probeName.Replace(':', '_') + "_" + _probeIndex + ".lz");
+				if (System.IO.File.Exists(pf)) { payload = System.IO.File.ReadAllBytes(pf); }
+			}
 			compressedLength = payload.Length;
 			payloadBytes = payload;
 			var rs = Dwg21ReedSolomon.DataPages;
@@ -349,6 +394,8 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 			Array.Copy(data, offset, payloadBytes, 0, length);
 			//A real file leaves an encoding-1 page 0x20 more room than the page size it declares.
 			storedSize = align0x20(Math.Max(length, pageMaxSize) + 0x20);
+			string psEnv = System.Environment.GetEnvironmentVariable("MOREDWG_PREVIEW_SLOT");
+			if (!string.IsNullOrEmpty(psEnv) && pageMaxSize > 0x8000) { storedSize = System.Convert.ToInt64(psEnv, 16); }
 			byte[] page = new byte[storedSize];
 			Array.Copy(data, offset, page, 0, length);
 			return page;
