@@ -1,4 +1,5 @@
 ﻿using ACadSharp.Attributes;
+using ACadSharp.Tables;
 using static ACadSharp.Objects.TableStyle;
 
 namespace ACadSharp.Entities;
@@ -28,5 +29,20 @@ public partial class TableEntity
 		/// Gets the value associated with the CAD entity or property.
 		/// </summary>
 		public CadValue CadValue { get; } = new();
+
+		/// <summary>
+		/// The block this content draws, when <see cref="ContentType"/> is
+		/// <see cref="TableCellContentType.Block"/>.
+		/// </summary>
+		/// <remarks>
+		/// Both readers read the handle and both threw it away: the DWG reader put it on
+		/// <c>CadTableCellContentTemplate.BlockRecordHandle</c> and the DXF reader put it on the
+		/// cell template's <c>ValueHandle</c>, and each <c>Build</c> either ignored the field or
+		/// resolved it into a local it then did nothing with - an empty <c>if</c> body. Both writers
+		/// then wrote a null handle in its place, so a block cell came back from AutoCAD as a
+		/// <b>text</b> cell. Measured on AutoCAD's own re-export of a file written here, on the two
+		/// block cells of <c>sample_AC1032</c> (T97).
+		/// </remarks>
+		public BlockRecord BlockRecord { get; set; }
 	}
 }

@@ -332,5 +332,9 @@ public static class DxfFileToken
 
 	public const string TableVport = "VPORT";
 
+	//Opens the value block of one table cell; ACVALUE_END closes it. Both are written by AutoCAD
+	//itself - see samples/sample_AC1032_ascii.dxf.
+	public const string CellValue = "CELL_VALUE";
+
 	public const string ValueEnd = "ACVALUE_END";
 }

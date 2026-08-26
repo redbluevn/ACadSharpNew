@@ -2880,8 +2880,9 @@ internal partial class DwgObjectWriter : DwgSectionIO
 				this._writer.HandleReference(DwgReferenceType.HardPointer, null);
 				break;
 			case TableEntity.TableCellContentType.Block:
-				//H 340 Handle to block record (hard pointer).
-				this._writer.HandleReference(DwgReferenceType.HardPointer, null);
+				//H 340 Handle to block record (hard pointer). Written as null until T97 gave the
+				//content somewhere to keep it, which made every block cell come back as a text one.
+				this._writer.HandleReference(DwgReferenceType.HardPointer, content.BlockRecord);
 				break;
 		}
 

@@ -1,4 +1,5 @@
 ﻿using ACadSharp.Entities;
+using ACadSharp.Tables;
 using System.Collections.Generic;
 
 namespace ACadSharp.IO.Templates;
@@ -34,8 +35,13 @@ internal partial class CadTableEntityTemplate
 			{
 			}
 
-			if (builder.TryGetCadObject<CadObject>(this.ValueHandle, out var cadObject))
+			//DXF puts the block of a block cell in group 340 of the cell, which the reader stores
+			//here. Resolving it into a local and doing nothing with it - which is what stood here -
+			//is how the cell lost the block it draws, and how AutoCAD came to read it back as a text
+			//cell (T97).
+			if (builder.TryGetCadObject(this.ValueHandle, out BlockRecord block) && this.Cell.Content != null)
 			{
+				this.Cell.Content.BlockRecord = block;
 			}
 
 			foreach (var contentTemplate in this.ContentTemplates)

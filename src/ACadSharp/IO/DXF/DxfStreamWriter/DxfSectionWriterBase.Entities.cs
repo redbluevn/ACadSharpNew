@@ -25,24 +25,6 @@ internal abstract partial class DxfSectionWriterBase
 			return;
 		}
 
-		if (entity is TableEntity table)
-		{
-			//A table is a block reference of the anonymous *T block that holds its drawn geometry,
-			//with the cell data on top of it. The cell data is not written here, and an ACAD_TABLE
-			//record without its AcDbTable subclass is one AutoCAD refuses, so the table goes out as
-			//the INSERT it derives from: the drawn table survives - the *T block is already written
-			//- instead of the whole entity disappearing from the file.
-			this.notify(
-				$"Table {table.Handle} is written as the block reference of {table.Block?.Name}; cell values, styles and merges are not written to DXF.",
-				NotificationType.NotImplemented);
-
-			this._writer.Write(DxfCode.Start, DxfFileToken.EntityInsert);
-			this.writeCommonObjectData(table);
-			this.writeCommonEntityData(table);
-			this.writeInsert(table, DxfSubclassMarker.Insert);
-			return;
-		}
-
 		this._writer.Write(DxfCode.Start, entity.ObjectName);
 
 		this.writeCommonObjectData(entity);
@@ -68,6 +50,12 @@ internal abstract partial class DxfSectionWriterBase
 				break;
 			case Hatch hatch:
 				this.writeHatch(hatch);
+				break;
+			//Before Insert, which a table derives from: matched the other way round the table would
+			//go out as a plain block reference and lose every cell, which is what this writer did
+			//until T92.
+			case TableEntity table:
+				this.writeTableEntity(table);
 				break;
 			case Insert insert:
 				this.writeInsert(insert);
@@ -745,6 +733,289 @@ internal abstract partial class DxfSectionWriterBase
 				}
 			}
 		}
+	}
+
+	/// <summary>
+	/// Writes an ACAD_TABLE with its cells, in the layout AutoCAD itself writes.
+	/// </summary>
+	/// <remarks>
+	/// Until T92 the table went out as the <c>INSERT</c> it derives from: the drawn geometry
+	/// survived, because the anonymous <c>*T</c> block is written anyway, and <b>every cell value,
+	/// span and style was dropped</b> with a notification. That is the channel the application
+	/// writes (see 19-APP-INTEGRATION G12), and the application builds tables in code.
+	///
+	/// The order below is taken from a DXF <b>AutoCAD wrote</b> -
+	/// <c>samples/sample_AC1032_ascii.dxf</c>, which carries two real tables - and not from a
+	/// specification: subclass, version, style and block owner, direction, the counts, the override
+	/// flags, the margins, then a height per row, a width per column, and then each cell as its
+	/// flags followed by a <c>CELL_VALUE</c> block. The reader in DxfSectionReaderBase.readTableEntity
+	/// consumes exactly these codes, which is the other half of the evidence.
+	/// </remarks>
+	private void writeTableEntity(TableEntity table)
+	{
+		DxfClassMap map = DxfClassMap.Create<TableEntity>();
+
+		//The block-reference half is only the block name and where it sits. Not writeInsert: that
+		//adds the scale, rotation, column and row groups a plain INSERT carries, and AutoCAD writes
+		//none of them for a table - both of its own tables have exactly 2 and 10/20/30 under this
+		//marker.
+		this._writer.Write(DxfCode.Subclass, DxfSubclassMarker.Insert);
+		this._writer.WriteName(2, table.Block);
+		this._writer.Write(10, table.InsertPoint);
+
+		this._writer.Write(DxfCode.Subclass, DxfSubclassMarker.TableEntity);
+
+		this._writer.Write(280, table.Version, map);
+		this._writer.WriteHandle(342, table.Style, map);
+		this._writer.WriteHandle(343, table.Block, map);
+		this._writer.Write(11, table.HorizontalDirection, map);
+
+		this._writer.Write(90, table.ValueFlag, map);
+		this._writer.Write(91, table.Rows.Count, map);
+		this._writer.Write(92, table.Columns.Count, map);
+
+		//93 is not a flag saying "there is an override", it is a bitmask saying WHICH override values
+		//follow - the cell margins in 40 and 41, and a text height per column in 140. AutoCAD's two
+		//tables settle that much on their own: the one with 93 = 7340056 is followed by 40, 41 and
+		//three 140s before the row heights, and the one with 93 = 0 goes straight from 96 to 141.
+		//
+		//This model does not keep those values - the reader puts 40 on a template it then drops, and
+		//the 140s arrive before any cell exists - so the choice is between claiming an override with
+		//nothing behind it and saying there is none. Measured, because AUDIT does not decide it:
+		//written as 1, AutoCAD opens the file with **0 errors** and then quietly loses the merges -
+		//its own re-export of our file turns the 3x2 title cell back into 1x1 and clears every
+		//merged flag, and the table's value flag drops from 22 to 20. Written as 0, its re-export
+		//matches its own original cell for cell. So: 0, which is also the truth about what this
+		//writer carries. Carrying the override for real means keeping 40, 41 and the 140s in the
+		//model first, and that is the rest of G15.1.
+		this._writer.Write(93, 0);
+		this._writer.Write(94, table.OverrideBorderColor ? 1 : 0, map);
+		this._writer.Write(95, table.OverrideBorderLineWeight ? 1 : 0, map);
+		this._writer.Write(96, table.OverrideBorderVisibility ? 1 : 0, map);
+
+		foreach (TableEntity.Row row in table.Rows)
+		{
+			this._writer.Write(141, row.Height);
+		}
+
+		foreach (TableEntity.Column column in table.Columns)
+		{
+			this._writer.Write(142, column.Width);
+		}
+
+		//The merges have to be worked out before the cells are written, because DXF keeps them ON the
+		//cells and a table read from a DWG keeps them somewhere else entirely - see mergeViewOf.
+		var merges = mergeViewOf(table);
+
+		for (int r = 0; r < table.Rows.Count; r++)
+		{
+			for (int c = 0; c < table.Rows[r].Cells.Count; c++)
+			{
+				this.writeTableCell(table.Rows[r].Cells[c], merges[(r, c)]);
+			}
+		}
+	}
+
+	/// <summary>
+	/// How wide each cell spans and whether it was merged away, for a table from either layout.
+	/// </summary>
+	/// <remarks>
+	/// The same table says this in two different places depending on where it was read from, and
+	/// the DXF writer has to speak the first one:
+	/// <list type="bullet">
+	/// <item>read from a <b>DXF</b>, the merges are on the cells - <c>MergedValue</c> and the span
+	/// in <c>BorderWidth</c>/<c>BorderHeight</c> - and <c>MergedCellRanges</c> is empty;</item>
+	/// <item>read from a <b>DWG</b>, they are in <c>MergedCellRanges</c> and every cell reports
+	/// span 0x0 and merged 0.</item>
+	/// </list>
+	/// Written without the translation, a table that came from a DWG goes into DXF with no merges
+	/// at all. AUDIT does not see it and neither does reading our own file back; AutoCAD's own
+	/// export of it does, which is how it was found - six cells of the sample, called by name.
+	///
+	/// The mirror image of the conversion T84 does in the DWG writer, and kept local for the same
+	/// reason: the document is not touched, because the caller may still be using it.
+	/// </remarks>
+	private static Dictionary<(int Row, int Column), (int Width, int Height, short Merged)> mergeViewOf(TableEntity table)
+	{
+		var view = new Dictionary<(int, int), (int, int, short)>();
+		for (int r = 0; r < table.Rows.Count; r++)
+		{
+			for (int c = 0; c < table.Rows[r].Cells.Count; c++)
+			{
+				TableEntity.Cell cell = table.Rows[r].Cells[c];
+
+				//A cell that is not merged spans one by one. Zero is what a table read from a DWG
+				//reports, and a zero span in DXF is not "one", it is a cell with no size.
+				view[(r, c)] = (
+					Math.Max(1, cell.BorderWidth),
+					Math.Max(1, cell.BorderHeight),
+					cell.MergedValue);
+			}
+		}
+
+		foreach (TableEntity.CellRange range in table.MergedCellRanges)
+		{
+			int width = range.RightColumnIndex - range.LeftColumnIndex + 1;
+			int height = range.BottomRowIndex - range.TopRowIndex + 1;
+			for (int r = range.TopRowIndex; r <= range.BottomRowIndex; r++)
+			{
+				for (int c = range.LeftColumnIndex; c <= range.RightColumnIndex; c++)
+				{
+					if (!view.ContainsKey((r, c)))
+					{
+						continue;
+					}
+
+					//The top left cell of the range carries the span and holds the content; every
+					//other cell of it is merged away.
+					view[(r, c)] = r == range.TopRowIndex && c == range.LeftColumnIndex
+						? (width, height, (short)0)
+						: (1, 1, (short)1);
+				}
+			}
+		}
+
+		return view;
+	}
+
+	private void writeTableCell(TableEntity.Cell cell, (int Width, int Height, short Merged) merge)
+	{
+		//171 opens the cell - the reader creates one here - so nothing of a cell may be written
+		//before it. The order and the whole set come from AutoCAD's own two tables in
+		//samples/sample_AC1032_ascii.dxf, cell by cell.
+		//
+		//A table read from a DWG reports cell type 0, which is not one of the two the format has.
+		//DXF has nowhere to put "no type", and AutoCAD writes 1 for every text cell, so an untyped
+		//cell goes out as text - which is what it is, since a block cell is the case that names a
+		//block.
+		//Which of the two a cell is gets said in a different place depending on where the table was
+		//read from: a DXF sets Cell.Type, a DWG leaves it 0 and says it on the content instead. Ask
+		//both, or a table carried over from a DWG writes every block cell out as text.
+		TableEntity.CellType type =
+			cell.Type == TableEntity.CellType.Block
+			|| cell.Content?.ContentType == TableEntity.TableCellContentType.Block
+			|| cell.Content?.BlockRecord != null
+				? TableEntity.CellType.Block
+				: TableEntity.CellType.Text;
+
+		this._writer.Write(171, (int)type);
+		this._writer.Write(172, cell.EdgeFlags);
+		this._writer.Write(173, merge.Merged);
+		this._writer.Write(174, cell.AutoFit ? (short)1 : (short)0);
+		this._writer.Write(175, merge.Width);
+		this._writer.Write(176, merge.Height);
+		this._writer.Write(91, (int)cell.StateFlags);
+		this._writer.Write(178, cell.VirtualEdgeFlag);
+		this._writer.Write(145, cell.Rotation);
+
+		TableEntity.CellContent content = cell.Content;
+		if (type == TableEntity.CellType.Block)
+		{
+			//A block cell names the block it draws in 340 and how it is scaled in 144, where a text
+			//cell puts its text height. 179 and 170 follow with 0 and 1 in AutoCAD's own files;
+			//nothing here holds them and nothing reads them back, so they go out as AutoCAD writes
+			//them rather than being invented from something else.
+			//
+			//The block itself cannot be written, because it is not kept: the reader reads 340 into
+			//CadTableCellTemplate.ValueHandle, and Build resolves the handle into a local that the
+			//method then does nothing with - an empty if body. So the cell knows it is a block cell
+			//and not which block. Measured on AutoCAD's own re-export of a file written here: the
+			//two block cells of sample_AC1032 come back as TEXT cells. Said out loud rather than
+			//left to be discovered; keeping the block means giving Cell somewhere to put it.
+			if (content?.BlockRecord != null)
+			{
+				this._writer.WriteHandle(340, content.BlockRecord);
+			}
+			else
+			{
+				//Since T97 the block IS kept, so this is no longer everyone: it is a block cell that
+				//genuinely has no block, which a caller can build in code. Written without 340,
+				//AutoCAD reads it back as a text cell, so say so rather than let it change type in
+				//silence.
+				this.notify(
+					$"Table cell of type {type} has no block to draw, so it is written without one and AutoCAD reads it back as a text cell.",
+					NotificationType.Warning);
+			}
+
+			this._writer.Write(144, content?.Format?.Scale ?? 0.0);
+			this._writer.Write(179, (short)0);
+			this._writer.Write(170, (short)1);
+		}
+		else if (content != null)
+		{
+			this._writer.Write(140, content.Format.TextHeight);
+		}
+
+		this._writer.Write(92, 0);
+		this._writer.Write(301, DxfFileToken.CellValue);
+		this.writeTableCellValue(content?.CadValue);
+		this._writer.Write(304, DxfFileToken.ValueEnd);
+	}
+
+	/// <summary>
+	/// The value block of one table cell, between CELL_VALUE and ACVALUE_END.
+	/// </summary>
+	/// <remarks>
+	/// Not <c>writeCadValue</c>, which serves a FIELD and stops at the value itself: a cell also
+	/// carries its unit, its format string and the text AutoCAD drew for it (94, 300, 302), and
+	/// AutoCAD writes those three for <b>every</b> cell, including the empty ones a merge leaves
+	/// behind. Sharing the FIELD writer here cost the second table of the sample outright - a cell
+	/// whose value is null threw on the cast, and the failsafe left the whole table out.
+	/// </remarks>
+	private void writeTableCellValue(CadValue value)
+	{
+		if (value == null)
+		{
+			this._writer.Write(93, 0);
+			this._writer.Write(90, (int)CadValueType.Unknown);
+			this._writer.Write(94, 0);
+			this._writer.Write(300, string.Empty);
+			this._writer.Write(302, string.Empty);
+			return;
+		}
+
+		this._writer.Write(93, value.Flags);
+		this._writer.Write(90, (int)value.ValueType);
+
+		//A null value is not a broken cell: an empty cell keeps its type and simply has nothing to
+		//say, and AutoCAD writes exactly the type and then the three closing codes.
+		switch (value.ValueType)
+		{
+			case CadValueType.Double when value.Value != null:
+				this._writer.Write(140, Convert.ToDouble(value.Value));
+				break;
+			case CadValueType.Long when value.Value != null:
+				this._writer.Write(91, Convert.ToInt32(value.Value));
+				break;
+			case CadValueType.Point2D:
+			case CadValueType.Point3D:
+				if (value.Value is XYZ point)
+				{
+					this._writer.Write(11, point);
+				}
+				else if (value.Value is XY flat)
+				{
+					this._writer.Write(11, new XYZ(flat.X, flat.Y, 0));
+				}
+				break;
+			case CadValueType.General:
+			case CadValueType.String:
+				if (value.Value is string text)
+				{
+					this.writeLongTextValue(1, 2, text);
+				}
+				break;
+			case CadValueType.Handle:
+				if (value.Value is IHandledCadObject handled)
+				{
+					this._writer.WriteHandle(330, handled);
+				}
+				break;
+		}
+
+		this._writer.Write(94, (int)value.Units);
+		this._writer.Write(300, value.Format ?? string.Empty);
+		this._writer.Write(302, value.FormattedValue ?? string.Empty);
 	}
 
 	private void writeInsert(Insert insert, string subclassMarker = null)

@@ -1,4 +1,5 @@
 ﻿using ACadSharp.Entities;
+using ACadSharp.Tables;
 using System.Collections.Generic;
 
 namespace ACadSharp.IO.Templates;
@@ -25,6 +26,13 @@ internal partial class CadTableEntityTemplate
 		public void Build(CadDocumentBuilder builder)
 		{
 			this.CadValueTemplate?.Build(builder);
+
+			//The block a block cell draws. Read by both readers and, until T97, dropped by both:
+			//this field was set and never used.
+			if (builder.TryGetCadObject(this.BlockRecordHandle, out BlockRecord block))
+			{
+				this.Content.BlockRecord = block;
+			}
 
 			foreach (var att in this.AttTemplates)
 			{
