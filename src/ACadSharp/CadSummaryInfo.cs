@@ -49,6 +49,16 @@ namespace ACadSharp
 		public string HyperlinkBase { get; set; } = string.Empty;
 
 		/// <summary>
+		/// How long the document has been open for editing, in total.
+		/// </summary>
+		/// <remarks>
+		/// The reader fills this from the file. The writer always emits
+		/// <see cref="Header.CadHeader.TotalEditingTime"/> instead, because AutoCAD refuses to
+		/// open an R2007 drawing whose two copies of this value disagree.
+		/// </remarks>
+		public TimeSpan TotalEditingTime { get; set; }
+
+		/// <summary>
 		/// When the document was first created.
 		/// </summary>
 		public DateTime CreatedDate { get; set; } = DateTime.Now;

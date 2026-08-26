@@ -1,6 +1,7 @@
 ﻿using CSUtilities.Converters;
 using CSUtilities.IO;
 using CSUtilities.Text;
+using System;
 
 namespace ACadSharp.IO.DWG
 {
@@ -57,9 +58,13 @@ namespace ACadSharp.IO.DWG
 				//String	2 + n	RevisionNumber
 				summary.HyperlinkBase = this._readStringMethod();
 
-				//?	8	Total editing time(ODA writes two zero Int32’s)
-				this._reader.ReadInt();
-				this._reader.ReadInt();
+				//Total editing time: whole days, then the milliseconds within that day. AutoCAD
+				//writes the header's $TDINDWG here and refuses an R2007 file where the two
+				//disagree, so it is worth keeping rather than discarding.
+				int editingDays = this._reader.ReadInt();
+				int editingMilliseconds = this._reader.ReadInt();
+				summary.TotalEditingTime = TimeSpan.FromDays(editingDays)
+					+ TimeSpan.FromMilliseconds(editingMilliseconds);
 
 				//Julian date	8	Create date time
 				summary.CreatedDate = this._reader.Read8BitJulianDate();

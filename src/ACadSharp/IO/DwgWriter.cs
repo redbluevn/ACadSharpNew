@@ -4,6 +4,7 @@ using ACadSharp.IO.DWG.DwgStreamWriters;
 using ACadSharp.Tables.Collections;
 using CSUtilities.IO;
 using CSUtilities.Text;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -419,9 +420,15 @@ public class DwgWriter : CadWriterBase<DwgWriterConfiguration>
 		writer.WriteTextUnicode(info.RevisionNumber);
 		writer.WriteTextUnicode(info.HyperlinkBase);
 
-		//?	8	Total editing time(ODA writes two zero Int32’s)
-		writer.WriteInt(0);
-		writer.WriteInt(0);
+		//Total editing time, as whole days plus the milliseconds within that day. The ODA writes
+		//two zero Int32s here, and so did this writer - which an R2007 file does not survive:
+		//AutoCAD cross-checks the pair against the header's $TDINDWG and refuses the file when
+		//they disagree (measured by swapping this section alone into a real R2007 file - zero
+		//is refused, and so is any other value than the header's own). Later versions are more
+		//forgiving, but writing the document's real value is right for all of them.
+		TimeSpan editing = this._document.Header.TotalEditingTime;
+		writer.WriteInt((int)editing.TotalDays);
+		writer.WriteInt((int)Math.Round(editing.Subtract(TimeSpan.FromDays((int)editing.TotalDays)).TotalMilliseconds));
 
 		writer.Write8BitJulianDate(info.CreatedDate);
 		writer.Write8BitJulianDate(info.ModifiedDate);
