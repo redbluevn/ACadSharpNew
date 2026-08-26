@@ -139,7 +139,7 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 		//mirroring a real file, where the maps carry the highest ids but the pages map sits FIRST
 		//in the stream at relative offset 0.
 		var dataPages = new List<(WrittenPage page, byte[] bytes)>();
-		foreach (PendingSection section in this._sections)
+		foreach (PendingSection section in orderPages(this._sections))
 		{
 			(ulong hash, ulong encoding) = _sectionProperties.TryGetValue(section.Name, out var p)
 				? p
@@ -415,6 +415,35 @@ internal class DwgFileHeaderWriterAC21 : DwgFileHeaderWriterBase<DwgFileHeaderAC
 	private static long align0x20(long value)
 	{
 		return (value + 0x1F) & ~0x1FL;
+	}
+
+	//The order a real AutoCAD file lays the pages out IN THE FILE, which is not the order it lists
+	//them in the section map: measured by walking a real file's page map.  Sections this writer
+	//emits and a real file does not keep their own order, after these.
+	private static readonly string[] _pageOrder =
+	{
+		DwgSectionDefinition.SummaryInfo,
+		DwgSectionDefinition.Preview,
+		DwgSectionDefinition.AppInfo,
+		DwgSectionDefinition.AppInfoHistory,
+		DwgSectionDefinition.XrefManifest,
+		DwgSectionDefinition.RevHistory,
+		DwgSectionDefinition.AcDbObjects,
+		DwgSectionDefinition.ObjFreeSpace,
+		DwgSectionDefinition.Template,
+		DwgSectionDefinition.Handles,
+		DwgSectionDefinition.Classes,
+		DwgSectionDefinition.AuxHeader,
+		DwgSectionDefinition.Header,
+	};
+
+	private static IEnumerable<PendingSection> orderPages(IEnumerable<PendingSection> sections)
+	{
+		return sections.OrderBy(s =>
+		{
+			int i = Array.IndexOf(_pageOrder, s.Name);
+			return i < 0 ? _pageOrder.Length : i;
+		});
 	}
 
 	//The order a real AutoCAD file lists the sections in its section map, measured by dumping
