@@ -75,7 +75,6 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			case UnknownNonGraphicalObject unknownObject when !this.canWriteRawObject(unknownObject):
 			case VisualStyle visualStyle when !this.canWriteVisualStyle(visualStyle):
 			case ProxyObject:
-			case BlockReferenceObjectContextData:
 			case MTextAttributeObjectContextData:
 				return true;
 		}
@@ -2102,6 +2101,20 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			case MultiLeaderStyle multiLeaderStyle:
 				this.writeMultiLeaderStyle(multiLeaderStyle);
 				break;
+			//The annotative context of a block reference: where that INSERT sits, and at what
+			//rotation and scale, for one annotation scale. Skipped until now, and it is not a rare
+			//thing in a real drawing - the seventeen client drawings carry 208, 114, 40, 34 and 27
+			//of them (T99). The two halves above it were already written for MULTILEADER; what was
+			//missing is the five fields of its own, in the order its reader takes them.
+			case BlockReferenceObjectContextData blockReferenceContextData:
+				this.writeObjectContextData(blockReferenceContextData);
+				this.writeAnnotScaleObjectContextData(blockReferenceContextData);
+				this._writer.WriteBitDouble(blockReferenceContextData.Rotation);
+				this._writer.Write3BitDouble(blockReferenceContextData.InsertionPoint);
+				this._writer.WriteBitDouble(blockReferenceContextData.XScale);
+				this._writer.WriteBitDouble(blockReferenceContextData.YScale);
+				this._writer.WriteBitDouble(blockReferenceContextData.ZScale);
+				break;
 			case MultiLeaderObjectContextData multiLeaderObjectContextData:
 				this.writeObjectContextData(multiLeaderObjectContextData);
 				this.writeAnnotScaleObjectContextData(multiLeaderObjectContextData);
@@ -2151,8 +2164,17 @@ internal partial class DwgObjectWriter : DwgSectionIO
 	{
 		//BS	70	Version.
 		this._writer.WriteBitShort(objectContextData.Version);
-		//B	-	Has file to extension dictionary.
-		this._writer.WriteBit(objectContextData.HasFileToExtensionDictionary);
+		//No third field here. The writer used to emit a bit for HasFileToExtensionDictionary, and
+		//nothing reads it: not this library's reader, which takes Version then Default and nothing
+		//between, and not AutoCAD - a file carrying that bit does not open at all. The property is
+		//written by nobody else and read by nobody, so the bit was pure surplus, and every object
+		//that followed it in the record was one bit out of place.
+		//
+		//It had never cost anything because the only object that went through here was a multileader
+		//context, and no drawing in this corpus has one - G9 said as much and left it unmeasured.
+		//T99 sent 423 block-reference contexts through the same path and AutoCAD refused the file at
+		//once. Measured after removing it: AUDIT 5 on drawing F, which is F's own number with or
+		//without these objects, and all 423 read back.
 		//B	290	Default flag.
 		this._writer.WriteBit(objectContextData.Default);
 	}

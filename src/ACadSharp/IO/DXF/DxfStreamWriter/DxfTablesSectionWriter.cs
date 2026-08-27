@@ -113,6 +113,11 @@ namespace ACadSharp.IO.DXF
 					this.writeVPort(vport, map.SubClasses[vport.SubclassMarker]);
 					break;
 				default:
+					//Not reachable from a caller's document, and that is checked rather than hoped:
+					//TableEntry's only constructor is internal, so the nine kinds above are every
+					//kind that can exist. This is the one throw on the DXF write path that no
+					//failsafe wraps - the TABLES section is written before any entity - so it is
+					//worth knowing why it cannot fire rather than leaving it to be discovered.
 					throw new NotImplementedException($"TableEntry not implemented {entry.GetType().FullName}");
 			}
 

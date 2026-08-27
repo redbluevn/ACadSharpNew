@@ -308,19 +308,25 @@ namespace ACadSharp.IO.DWG
 			this.TextWriter.WriteTextUnicode(value);
 		}
 
+		//The three below belong to the interface but not to this writer: it is the one that MERGES
+		//three streams, and positioning or shifting the merged view is meaningless - the object's
+		//own writers do that on Main, Text and Handle separately, which is what ResetStream and
+		//WriteSpearShift already do here. Nothing in this assembly calls them on a merged writer,
+		//and no caller can: the type is internal. Left throwing rather than silently doing nothing,
+		//because a silent no-op here would misalign a whole object.
 		public void SetPositionInBits(long posInBits)
 		{
-			throw new NotImplementedException();
+			throw new NotImplementedException($"{nameof(SetPositionInBits)} has no meaning on the merged writer; position the individual streams instead.");
 		}
 
 		public void SetPositionByFlag(long pos)
 		{
-			throw new NotImplementedException();
+			throw new NotImplementedException($"{nameof(SetPositionByFlag)} has no meaning on the merged writer; position the individual streams instead.");
 		}
 
 		public void WriteShiftValue()
 		{
-			throw new NotImplementedException();
+			throw new NotImplementedException($"{nameof(WriteShiftValue)} has no meaning on the merged writer; see WriteSpearShift.");
 		}
 
 		public void WriteBytes(byte[] bytes, int offset, int length)
