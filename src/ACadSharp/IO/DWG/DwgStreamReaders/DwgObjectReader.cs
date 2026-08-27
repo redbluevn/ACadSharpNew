@@ -7780,6 +7780,33 @@ namespace ACadSharp.IO.DWG
 			//72
 			osnap.ObjectOsnapType = (ObjectOsnapType)this._mergedReaders.ReadByte();
 
+			//A reference whose osnap type is None names no object: no handle, no subentity path,
+			//no 73 and no 91 - it is a bare point. AutoCAD's own DXF says so plainly, and this
+			//reader read all four of them anyway, ran off the end of the record and lost the whole
+			//association.
+			//
+			//Found on a client drawing added 2026-08-27: 54 of these objects, 49 read, and the five
+			//that failed are EXACTLY the five whose second reference carries 72 = 0. The layout had
+			//been decoded on one drawing where every reference names something, so the branch had
+			//never been seen.
+			if (osnap.ObjectOsnapType == ObjectOsnapType.None)
+			{
+				//One BD here that DXF does not print, measured rather than named: with it the four
+				//values AutoCAD DOES print - 40, 10/20/30 and 75 - match its export exactly on all
+				//five records of the drawing; without it every one of them is a single double out,
+				//the point comes back as (0, x, y) and 75 reads as the wrong bit. What it means is
+				//not known, so it is read and dropped rather than given an invented name.
+				this._mergedReaders.ReadBitDouble();
+
+				//40
+				osnap.GeometryParameter = this._mergedReaders.ReadBitDouble();
+				//10, 20, 30
+				osnap.OsnapPoint = this._mergedReaders.Read3BitDouble();
+				//75
+				osnap.HasLastPointRef = this._mergedReaders.ReadBit();
+				return template;
+			}
+
 			//331
 			template.ObjectHandle = this.handleReference();
 

@@ -2196,6 +2196,24 @@ internal partial class DwgObjectWriter : DwgSectionIO
 
 		//72
 		this._writer.WriteByte((byte)osnap.ObjectOsnapType);
+
+		//A reference whose osnap type is None names no object, so nothing of the subentity path is
+		//written - the same shape the reader now takes, and the same shape AutoCAD writes.
+		if (osnap.ObjectOsnapType == ObjectOsnapType.None)
+		{
+			//The undocumented BD the reader takes here and drops - see readOsnapPointRef. Written as
+			//zero, which is what every one of the five records measured carries.
+			this._writer.WriteBitDouble(0.0);
+
+			//40
+			this._writer.WriteBitDouble(osnap.GeometryParameter);
+			//10, 20, 30
+			this._writer.Write3BitDouble(osnap.OsnapPoint);
+			//75
+			this._writer.WriteBit(osnap.HasLastPointRef);
+			return;
+		}
+
 		//331
 		this._writer.HandleReference(DwgReferenceType.Undefined, osnap.Geometry);
 
