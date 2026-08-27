@@ -5879,6 +5879,12 @@ namespace ACadSharp.IO.DWG
 				case DxfFileToken.ObjectDynamicBlockPurgePreventer:
 					template = this.readDynamicBlockPurgePreventer();
 					break;
+				case DxfFileToken.ObjectDynamicBlockProxyNode:
+					DynamicBlockProxyNode proxyNode = new();
+					CadEvaluationExpressionTemplate proxyTemplate = new(proxyNode);
+					this.readEvaluationExpression(proxyTemplate);
+					template = proxyTemplate;
+					break;
 				case DxfFileToken.EntityAecWall:
 					template = this.readAecWall();
 					break;
@@ -5995,6 +6001,9 @@ namespace ACadSharp.IO.DWG
 				case DxfFileToken.ObjectBlockLookupParameter:
 					template = this.readBlockLookupParameter();
 					break;
+				case DxfFileToken.ObjectBlockPropertiesTable:
+					template = this.readBlockPropertiesTable();
+					break;
 				case DxfFileToken.ObjectBlockFlipParameter:
 					template = this.readBlockFlipParameter();
 					break;
@@ -6039,6 +6048,10 @@ namespace ACadSharp.IO.DWG
 					break;
 				case DxfFileToken.ObjectBlockLookupGrip:
 					template = new CadBlockGripTemplate(new BlockLookupGrip());
+					this.readBlockGrip(template as CadBlockGripTemplate);
+					break;
+				case DxfFileToken.ObjectBlockPropertiesTableGrip:
+					template = new CadBlockGripTemplate(new BlockPropertiesTableGrip());
 					this.readBlockGrip(template as CadBlockGripTemplate);
 					break;
 				case DxfFileToken.ObjectBlockPolarGrip:

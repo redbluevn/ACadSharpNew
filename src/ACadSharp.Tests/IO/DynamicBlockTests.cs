@@ -70,6 +70,12 @@ public class DynamicBlockTests : IOTestsBase
 			case DxfFileToken.ObjectBlockPolarParameter:
 				this.assertBlockParameter(doc, "BLOCK_POLAR_PARAMETER", typeof(BlockPolarParameter));
 				break;
+			//The fixture the properties-table feature arrived with. Its own five round-trip tests
+			//live in BlockPropertiesTableRoundTripTests; this case only makes the isolated sweep
+			//recognise the fixture instead of falling through to the throw below.
+			case DxfFileToken.ObjectBlockPropertiesTable:
+				this.assertBlockParameter(doc, "MAUTOCAD_PROPERTIES_TABLE", typeof(BlockPropertiesTable));
+				break;
 			default:
 				throw new System.NotImplementedException();
 		}

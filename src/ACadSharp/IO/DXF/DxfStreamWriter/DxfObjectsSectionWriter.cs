@@ -483,6 +483,9 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 			case DynamicBlockPurgePreventer dynamicBlockPurgePreventer:
 				this.writeDynamicBlockPurge(dynamicBlockPurgePreventer);
 				break;
+			case DynamicBlockProxyNode dynamicBlockProxyNode:
+				this.writeEvaluationExpression(dynamicBlockProxyNode);
+				break;
 			case GeoData geodata:
 				this.writeGeoData(geodata);
 				break;
@@ -534,6 +537,12 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 			case BlockLookupGrip blockLookupGrip:
 				this.writeBlockGripBase(blockLookupGrip, DxfSubclassMarker.BlockLookupGrip);
 				break;
+			case BlockPropertiesTableGrip blockPropertiesTableGrip:
+				// AutoCAD writes this grip using the AcDbBlockGrip payload only. An empty
+				// AcDbBlockPropertiesTableGrip subclass marker makes AutoCAD report a
+				// premature end of object and discard the entire DXF.
+				this.writeBlockGrip(blockPropertiesTableGrip);
+				break;
 			case BlockVisibilityGrip blockVisibilityGrip:
 				this.writeBlockVisibilityGrip(blockVisibilityGrip);
 				break;
@@ -542,6 +551,9 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 				break;
 			case BlockLinearParameter blockLinearParameter:
 				this.writeBlockLinearParameter(blockLinearParameter);
+				break;
+			case BlockPropertiesTable blockPropertiesTable:
+				this.writeBlockPropertiesTable(blockPropertiesTable);
 				break;
 			case PlotSettings plotSettings:
 				this.writePlotSettings(plotSettings);
@@ -1087,6 +1099,58 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 		this._writer.Write(303, parameter.Label, map);
 		this._writer.Write(304, parameter.Description, map);
 		this._writer.Write(94, parameter.ActionId, map);
+	}
+
+	private void writeBlockPropertiesTable(BlockPropertiesTable table)
+	{
+		this.writeBlock1PtParameter(table);
+
+		this._writer.Write(100, DxfSubclassMarker.BlockPropertiesTable);
+		this._writer.Write(90, table.Version);
+		this._writer.Write(300, table.Label);
+		this._writer.Write(301, table.Description);
+		this._writer.Write(91, table.Columns.Count);
+
+		foreach (BlockPropertiesTable.Column column in table.Columns)
+		{
+			this._writer.Write(340, column.Parameter?.Handle ?? 0UL);
+			this._writer.Write(170, column.PropertyIndex);
+			this._writer.Write(171, column.Value171);
+			this._writer.Write(300, column.UnmatchedValue);
+			this._writer.Write(301, column.ConnectionName);
+		}
+
+		this._writer.Write(90, table.Value90);
+		this._writer.Write(170, table.Value170A);
+		this._writer.Write(170, table.Value170B);
+		this._writer.Write(290, table.Value290);
+		this._writer.Write(291, table.Value291);
+		this._writer.Write(292, table.Value292);
+		this._writer.Write(293, table.Value293);
+		this._writer.Write(294, table.Value294);
+		this._writer.Write(302, table.UnmatchedValue);
+		this._writer.Write(340, 0UL);
+		this._writer.Write(92, table.Rows.Count);
+
+		foreach (BlockPropertiesTable.Row row in table.Rows)
+		{
+			this._writer.Write(90, row.Index);
+			foreach (BlockPropertiesTable.Value value in row.Values)
+			{
+				this._writer.Write(170, value.Code);
+				if (value.Code != 40)
+				{
+					throw new InvalidOperationException($"Block properties table value code {value.Code} is not supported.");
+				}
+
+				this._writer.Write(140, value.Number);
+			}
+		}
+
+		this._writer.Write(93, table.Value93);
+		this._writer.Write(290, table.MustMatch);
+		this._writer.Write(291, table.FinalValue291);
+		this._writer.Write(292, table.FinalValue292);
 	}
 
 	private void writeBlockMoveAction(BlockMoveAction moveAction)

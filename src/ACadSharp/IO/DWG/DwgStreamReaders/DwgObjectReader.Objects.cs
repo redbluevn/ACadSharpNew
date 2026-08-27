@@ -3,6 +3,7 @@ using ACadSharp.Objects;
 using ACadSharp.Objects.Evaluations;
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace ACadSharp.IO.DWG;
 
@@ -296,6 +297,78 @@ internal partial class DwgObjectReader : DwgSectionIO
 		blockLookupParameter.Label = this._mergedReaders.ReadVariableText();
 		blockLookupParameter.Description = this._mergedReaders.ReadVariableText();
 
+		return template;
+	}
+
+	private CadTemplate readBlockPropertiesTable()
+	{
+		BlockPropertiesTable table = new();
+		CadBlockPropertiesTableTemplate template = new(table);
+
+		this.readBlock1PtParameter(template);
+
+		table.Version = this._mergedReaders.ReadBitLong();
+		table.Label = this._mergedReaders.ReadVariableText();
+		table.Description = this._mergedReaders.ReadVariableText();
+		int columnCount = this._mergedReaders.ReadBitLong();
+		if (columnCount < 0 || columnCount > 4096)
+		{
+			throw new InvalidDataException($"Invalid block properties table column count {columnCount}.");
+		}
+
+		for (int i = 0; i < columnCount; i++)
+		{
+			template.ColumnParameterHandles.Add(this.handleReference());
+			table.Columns.Add(new BlockPropertiesTable.Column
+			{
+				PropertyIndex = this._mergedReaders.ReadBitShort(),
+				Value171 = this._mergedReaders.ReadBitShort(),
+				UnmatchedValue = this._mergedReaders.ReadVariableText(),
+				ConnectionName = this._mergedReaders.ReadVariableText(),
+			});
+		}
+
+		table.Value90 = this._mergedReaders.ReadBitLong();
+		table.Value170A = this._mergedReaders.ReadBitShort();
+		table.Value170B = this._mergedReaders.ReadBitShort();
+		table.Value290 = this._mergedReaders.ReadBit();
+		table.Value291 = this._mergedReaders.ReadBit();
+		table.Value292 = this._mergedReaders.ReadBit();
+		table.Value293 = this._mergedReaders.ReadBit();
+		table.Value294 = this._mergedReaders.ReadBit();
+		table.UnmatchedValue = this._mergedReaders.ReadVariableText();
+		this.handleReference();
+
+		int rowCount = this._mergedReaders.ReadBitLong();
+		if (rowCount < 0 || rowCount > 65536)
+		{
+			throw new InvalidDataException($"Invalid block properties table row count {rowCount}.");
+		}
+
+		for (int i = 0; i < rowCount; i++)
+		{
+			BlockPropertiesTable.Row row = new() { Index = this._mergedReaders.ReadBitLong() };
+			for (int j = 0; j < columnCount; j++)
+			{
+				short code = this._mergedReaders.ReadBitShort();
+				if (code != 40)
+				{
+					throw new NotSupportedException($"Block properties table value code {code} is not supported.");
+				}
+
+				row.Values.Add(new BlockPropertiesTable.Value
+				{
+					Code = code,
+					Number = this._mergedReaders.ReadBitDouble(),
+				});
+			}
+			table.Rows.Add(row);
+		}
+
+		table.Value93 = this._mergedReaders.ReadBitLong();
+		table.MustMatch = this._mergedReaders.ReadBit();
+		table.FinalValue291 = this._mergedReaders.ReadBit();
+		table.FinalValue292 = this._mergedReaders.ReadBit();
 		return template;
 	}
 

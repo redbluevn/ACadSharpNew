@@ -325,6 +325,55 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		this._writer.WriteVariableText(parameter.Description);
 	}
 
+	private void writeBlockPropertiesTable(BlockPropertiesTable table)
+	{
+		this.writeBlock1PtParameter(table);
+
+		this._writer.WriteBitLong(table.Version);
+		this._writer.WriteVariableText(table.Label);
+		this._writer.WriteVariableText(table.Description);
+		this._writer.WriteBitLong(table.Columns.Count);
+		foreach (BlockPropertiesTable.Column column in table.Columns)
+		{
+			this._writer.HandleReference(DwgReferenceType.HardPointer, column.Parameter);
+			this._writer.WriteBitShort(column.PropertyIndex);
+			this._writer.WriteBitShort(column.Value171);
+			this._writer.WriteVariableText(column.UnmatchedValue);
+			this._writer.WriteVariableText(column.ConnectionName);
+		}
+
+		this._writer.WriteBitLong(table.Value90);
+		this._writer.WriteBitShort(table.Value170A);
+		this._writer.WriteBitShort(table.Value170B);
+		this._writer.WriteBit(table.Value290);
+		this._writer.WriteBit(table.Value291);
+		this._writer.WriteBit(table.Value292);
+		this._writer.WriteBit(table.Value293);
+		this._writer.WriteBit(table.Value294);
+		this._writer.WriteVariableText(table.UnmatchedValue);
+		this._writer.HandleReference(DwgReferenceType.HardPointer, null);
+
+		this._writer.WriteBitLong(table.Rows.Count);
+		foreach (BlockPropertiesTable.Row row in table.Rows)
+		{
+			this._writer.WriteBitLong(row.Index);
+			foreach (BlockPropertiesTable.Value value in row.Values)
+			{
+				this._writer.WriteBitShort(value.Code);
+				if (value.Code != 40)
+				{
+					throw new InvalidOperationException($"Block properties table value code {value.Code} is not supported.");
+				}
+				this._writer.WriteBitDouble(value.Number);
+			}
+		}
+
+		this._writer.WriteBitLong(table.Value93);
+		this._writer.WriteBit(table.MustMatch);
+		this._writer.WriteBit(table.FinalValue291);
+		this._writer.WriteBit(table.FinalValue292);
+	}
+
 	private void writeBlockMoveAction(BlockMoveAction action)
 	{
 		this.writeBlockAction(action);
@@ -1987,6 +2036,9 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			case BlockLookupParameter blockLookupParameter:
 				this.writeBlockLookupParameter(blockLookupParameter);
 				break;
+			case BlockPropertiesTable blockPropertiesTable:
+				this.writeBlockPropertiesTable(blockPropertiesTable);
+				break;
 			case BlockAlignmentParameter blockAlignmentParameter:
 				this.writeBlockAlignmentParameter(blockAlignmentParameter);
 				break;
@@ -2028,6 +2080,9 @@ internal partial class DwgObjectWriter : DwgSectionIO
 				break;
 			case BlockLookupGrip blockLookupGrip:
 				this.writeBlockGrip(blockLookupGrip);
+				break;
+			case BlockPropertiesTableGrip blockPropertiesTableGrip:
+				this.writeBlockGrip(blockPropertiesTableGrip);
 				break;
 			case BlockGripLocationComponent blockGripLocationComponent:
 				this.writeBlockGripLocationComponent(blockGripLocationComponent);
@@ -2073,6 +2128,9 @@ internal partial class DwgObjectWriter : DwgSectionIO
 				break;
 			case DynamicBlockPurgePreventer dynamicBlockPurge:
 				this.writeDynamicBlockPurgePreventer(dynamicBlockPurge);
+				break;
+			case DynamicBlockProxyNode dynamicBlockProxyNode:
+				this.writeEvaluationExpression(dynamicBlockProxyNode);
 				break;
 			case EvaluationGraph evaluationGraph:
 				this.writeEvaluationGraph(evaluationGraph);

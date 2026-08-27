@@ -198,6 +198,10 @@ public static class DxfFileToken
 
 	public const string ObjectBlockLookupParameter = "BLOCKLOOKUPPARAMETER";
 
+	public const string ObjectBlockPropertiesTable = "BLOCKPROPERTIESTABLE";
+
+	public const string ObjectBlockPropertiesTableGrip = "BLOCKPROPERTIESTABLEGRIP";
+
 	public const string ObjectBlockMoveAction = "BLOCKMOVEACTION";
 
 	public const string ObjectBlockPointParameter = "BLOCKPOINTPARAMETER";
@@ -243,6 +247,7 @@ public static class DxfFileToken
 	public const string ObjectDimensionAssociation = "DIMASSOC";
 
 	public const string ObjectDynamicBlockPurgePreventer = "ACDB_DYNAMICBLOCKPURGEPREVENTER_VERSION";
+	public const string ObjectDynamicBlockProxyNode = "ACDB_DYNAMICBLOCKPROXYNODE";
 
 	public const string ObjectEvalGraph = "ACAD_EVALUATION_GRAPH";
 

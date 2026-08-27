@@ -1,5 +1,6 @@
 ﻿using ACadSharp.Classes;
 using ACadSharp.Entities;
+using ACadSharp.Exceptions;
 using ACadSharp.IO.Templates;
 using ACadSharp.Objects;
 using ACadSharp.Objects.Evaluations;
@@ -431,6 +432,101 @@ internal class DxfObjectsSectionReader : DxfSectionReaderBase
 				}
 				return true;
 		}
+	}
+
+	private bool readBlockPropertiesTable(CadTemplate template, DxfMap map)
+	{
+		CadBlockPropertiesTableTemplate tmp = template as CadBlockPropertiesTableTemplate;
+		BlockPropertiesTable table = tmp.CadObject as BlockPropertiesTable;
+
+		if (this.currentSubclass != DxfSubclassMarker.BlockPropertiesTable || this._reader.Code != 90)
+		{
+			return this.readBlock1PtParameter(template, map);
+		}
+
+		table.Version = this._reader.ValueAsInt;
+		this._reader.ExpectedCode(300);
+		table.Label = this._reader.ValueAsString;
+		this._reader.ExpectedCode(301);
+		table.Description = this._reader.ValueAsString;
+		this._reader.ExpectedCode(91);
+		int columnCount = this._reader.ValueAsInt;
+		if (columnCount < 0 || columnCount > 4096)
+		{
+			throw new DxfException($"Invalid block properties table column count {columnCount}.");
+		}
+
+		for (int i = 0; i < columnCount; i++)
+		{
+			BlockPropertiesTable.Column column = new();
+			this._reader.ExpectedCode(340);
+			tmp.ColumnParameterHandles.Add(this._reader.ValueAsHandle);
+			this._reader.ExpectedCode(170);
+			column.PropertyIndex = this._reader.ValueAsShort;
+			this._reader.ExpectedCode(171);
+			column.Value171 = this._reader.ValueAsShort;
+			this._reader.ExpectedCode(300);
+			column.UnmatchedValue = this._reader.ValueAsString;
+			this._reader.ExpectedCode(301);
+			column.ConnectionName = this._reader.ValueAsString;
+			table.Columns.Add(column);
+		}
+
+		this._reader.ExpectedCode(90);
+		table.Value90 = this._reader.ValueAsInt;
+		this._reader.ExpectedCode(170);
+		table.Value170A = this._reader.ValueAsShort;
+		this._reader.ExpectedCode(170);
+		table.Value170B = this._reader.ValueAsShort;
+		this._reader.ExpectedCode(290);
+		table.Value290 = this._reader.ValueAsBool;
+		this._reader.ExpectedCode(291);
+		table.Value291 = this._reader.ValueAsBool;
+		this._reader.ExpectedCode(292);
+		table.Value292 = this._reader.ValueAsBool;
+		this._reader.ExpectedCode(293);
+		table.Value293 = this._reader.ValueAsBool;
+		this._reader.ExpectedCode(294);
+		table.Value294 = this._reader.ValueAsBool;
+		this._reader.ExpectedCode(302);
+		table.UnmatchedValue = this._reader.ValueAsString;
+		this._reader.ExpectedCode(340);
+		this._reader.ExpectedCode(92);
+		int rowCount = this._reader.ValueAsInt;
+		if (rowCount < 0 || rowCount > 65536)
+		{
+			throw new DxfException($"Invalid block properties table row count {rowCount}.");
+		}
+
+		for (int i = 0; i < rowCount; i++)
+		{
+			BlockPropertiesTable.Row row = new();
+			this._reader.ExpectedCode(90);
+			row.Index = this._reader.ValueAsInt;
+			for (int j = 0; j < columnCount; j++)
+			{
+				this._reader.ExpectedCode(170);
+				short code = this._reader.ValueAsShort;
+				if (code != 40)
+				{
+					throw new DxfException($"Block properties table value code {code} is not supported.");
+				}
+
+				this._reader.ExpectedCode(140);
+				row.Values.Add(new BlockPropertiesTable.Value { Code = code, Number = this._reader.ValueAsDouble });
+			}
+			table.Rows.Add(row);
+		}
+
+		this._reader.ExpectedCode(93);
+		table.Value93 = this._reader.ValueAsInt;
+		this._reader.ExpectedCode(290);
+		table.MustMatch = this._reader.ValueAsBool;
+		this._reader.ExpectedCode(291);
+		table.FinalValue291 = this._reader.ValueAsBool;
+		this._reader.ExpectedCode(292);
+		table.FinalValue292 = this._reader.ValueAsBool;
+		return true;
 	}
 
 	private bool readBlockMoveAction(CadTemplate template, DxfMap map)
@@ -2305,6 +2401,8 @@ internal class DxfObjectsSectionReader : DxfSectionReaderBase
 				return this.readObjectCodes<XRecord>(new CadXRecordTemplate(), this.readXRecord);
 			case DxfFileToken.ObjectDynamicBlockPurgePreventer:
 				return this.readObjectCodes<DynamicBlockPurgePreventer>(new CadNonGraphicalObjectTemplate(new DynamicBlockPurgePreventer()), this.readObjectSubclassMap);
+			case DxfFileToken.ObjectDynamicBlockProxyNode:
+				return this.readObjectCodes<DynamicBlockProxyNode>(new CadEvaluationExpressionTemplate(new DynamicBlockProxyNode()), this.readEvaluationExpression);
 			case DxfFileToken.ObjectBlockRepresentationData:
 				return this.readObjectCodes<BlockRepresentationData>(new CadBlockRepresentationDataTemplate(), this.readBlockRepresentationData);
 			case DxfFileToken.ObjectBlockBasePointParameter:
@@ -2325,6 +2423,8 @@ internal class DxfObjectsSectionReader : DxfSectionReaderBase
 				return this.readObjectCodes<BlockLinearParameter>(new CadBlockLinearParameterTemplate(), this.readBlockLinearParameter);
 			case DxfFileToken.ObjectBlockLookupParameter:
 				return this.readObjectCodes<BlockLookupParameter>(new CadBlockLookupParameterTemplate(new BlockLookupParameter()), this.readBlockLookupParameter);
+			case DxfFileToken.ObjectBlockPropertiesTable:
+				return this.readObjectCodes<BlockPropertiesTable>(new CadBlockPropertiesTableTemplate(), this.readBlockPropertiesTable);
 			case DxfFileToken.ObjectBlockAlignmentParameter:
 				return this.readObjectCodes<BlockAlignmentParameter>(new CadBlock2PtParameterTemplate(new BlockAlignmentParameter()), this.readBlockAlignmentParameter);
 			case DxfFileToken.ObjectBlockFlipParameter:
@@ -2339,6 +2439,8 @@ internal class DxfObjectsSectionReader : DxfSectionReaderBase
 				return this.readObjectCodes<BlockLinearGrip>(new CadBlockGripTemplate(new BlockLinearGrip()), this.readBlockGripSubclass);
 			case DxfFileToken.ObjectBlockLookupGrip:
 				return this.readObjectCodes<BlockLookupGrip>(new CadBlockGripTemplate(new BlockLookupGrip()), this.readBlockGripSubclass);
+			case DxfFileToken.ObjectBlockPropertiesTableGrip:
+				return this.readObjectCodes<BlockPropertiesTableGrip>(new CadBlockGripTemplate(new BlockPropertiesTableGrip()), this.readBlockGripSubclass);
 			case DxfFileToken.ObjectBlockRotationGrip:
 				return this.readObjectCodes<BlockRotationGrip>(new CadBlockGripTemplate(new BlockRotationGrip()), this.readBlockGripSubclass);
 			case DxfFileToken.ObjectBlockPolarGrip:
