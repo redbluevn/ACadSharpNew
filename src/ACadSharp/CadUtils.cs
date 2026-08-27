@@ -79,7 +79,25 @@ internal static class CadUtils
 		/// </summary>
 		public static string UnescapeUnicodeCharacters(string value)
 		{
-			if (string.IsNullOrEmpty(value) || value.IndexOf("\\U+", System.StringComparison.Ordinal) < 0)
+			if (string.IsNullOrEmpty(value))
+			{
+				return value;
+			}
+
+			//AutoCAD has a second escape for the same problem, and this reader used to walk straight
+			//past it. \M+N#### carries a character by its RAW value in another code page, N naming
+			//which one - where \U+ carries the Unicode code point. A name that comes back still
+			//carrying the escape has a backslash in it, and a backslash makes the name invalid for
+			//DXF, so the whole table entry is dropped on write.
+			//
+			//Measured on a client drawing added 2026-08-27: a layer and two block records whose
+			//names are Chinese were dropped from every DXF written from it, taking the block
+			//contents with them and moving the layer's entities elsewhere - 31 in-scope losses on
+			//one drawing. AutoCAD's own DXF of the same file has all 51 layers and not one escape
+			//left in a name.
+			value = unescapeCodePageCharacters(value);
+
+			if (value.IndexOf("\\U+", System.StringComparison.Ordinal) < 0)
 			{
 				return value;
 			}
@@ -106,6 +124,98 @@ internal static class CadUtils
 		private static bool isHex(char c)
 		{
 			return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
+		}
+
+		/// <summary>
+		/// The code page each <c>\M+N</c> index names.
+		/// </summary>
+		/// <remarks>
+		/// Index 5 is measured, not assumed: the four escapes of one client drawing -
+		/// <c>C9B4 C3C5 BFF2 CCE5</c> - decode under 936 to the exact name AutoCAD's own DXF gives
+		/// that layer, and under no other candidate. The rest are the ODA table; if one of them ever
+		/// turns out to be wrong it will show the same way this one did, as a name that comes back
+		/// as the wrong characters rather than as an escape.
+		/// </remarks>
+		private static readonly Dictionary<int, int> _codePageEscapeIndex = new Dictionary<int, int>
+		{
+			{ 1, 932 },   //Japanese
+			{ 2, 950 },   //Traditional Chinese
+			{ 3, 949 },   //Korean, Wansung
+			{ 4, 1361 },  //Korean, Johab
+			{ 5, 936 },   //Simplified Chinese - the one measured
+		};
+
+		/// <summary>
+		/// Turns <c>\M+N####</c> back into the character it stands for, leaving anything it cannot
+		/// decode exactly as it was.
+		/// </summary>
+		private static string unescapeCodePageCharacters(string value)
+		{
+			if (value.IndexOf("\\M+", System.StringComparison.Ordinal) < 0)
+			{
+				return value;
+			}
+
+			System.Text.StringBuilder sb = new System.Text.StringBuilder(value.Length);
+			for (int i = 0; i < value.Length; i++)
+			{
+				if (i + 7 < value.Length + 1
+					&& value[i] == '\\' && i + 2 < value.Length && value[i + 1] == 'M' && value[i + 2] == '+'
+					&& i + 7 < value.Length
+					&& isHex(value[i + 3]) && isHex(value[i + 4]) && isHex(value[i + 5])
+					&& isHex(value[i + 6]) && isHex(value[i + 7]))
+				{
+					string decoded = decodeCodePageCharacter(
+						System.Convert.ToInt32(value.Substring(i + 3, 1), 16),
+						System.Convert.ToInt32(value.Substring(i + 4, 4), 16));
+
+					if (decoded != null)
+					{
+						sb.Append(decoded);
+						i += 7;
+						continue;
+					}
+				}
+
+				sb.Append(value[i]);
+			}
+
+			return sb.ToString();
+		}
+
+		private static string decodeCodePageCharacter(int index, int raw)
+		{
+			if (!_codePageEscapeIndex.TryGetValue(index, out int codePage))
+			{
+				//An index nobody has seen. Leaving the escape in place keeps the information; putting
+				//a guessed character there would lose it quietly.
+				return null;
+			}
+
+			try
+			{
+#if !NET48
+				System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+#endif
+				System.Text.Encoding encoding = System.Text.Encoding.GetEncoding(codePage);
+				byte[] bytes = raw > 0xFF
+					? new byte[] { (byte)(raw >> 8), (byte)(raw & 0xFF) }
+					: new byte[] { (byte)raw };
+
+				string decoded = encoding.GetString(bytes);
+				//A code page that cannot hold those bytes answers with the replacement character or
+				//a question mark, which is not an answer.
+				if (string.IsNullOrEmpty(decoded) || decoded.IndexOf('\uFFFD') >= 0 || decoded == "?")
+				{
+					return null;
+				}
+
+				return decoded;
+			}
+			catch (System.Exception)
+			{
+				return null;
+			}
 		}
 
 	private static Dictionary<string, CodePage> _dxfEncodingMap = new Dictionary<string, CodePage>
