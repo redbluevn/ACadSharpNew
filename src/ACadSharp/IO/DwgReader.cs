@@ -26,6 +26,21 @@ public class DwgReader : CadReaderBase<DwgReaderConfiguration>
 
 	private DwgFileHeader _fileHeader;
 
+	private static void readExactly(Stream stream, byte[] buffer, int count)
+	{
+		int offset = 0;
+		while (offset < count)
+		{
+			int read = stream.Read(buffer, offset, count - offset);
+			if (read == 0)
+			{
+				throw new EndOfStreamException();
+			}
+
+			offset += read;
+		}
+	}
+
 	/// <summary>
 	/// Initializes a new instance of the <see cref="DwgReader"/> class.
 	/// </summary>
@@ -421,7 +436,7 @@ public class DwgReader : CadReaderBase<DwgReaderConfiguration>
 
 		//Relative to data page map 1, add 0x480 to get stream position
 		stream.Position = (long)(0x480 + pageOffset);
-		stream.Read(buffer, 0, lenght);
+		readExactly(stream, buffer, lenght);
 
 		byte[] compressedData = new byte[(int)totalSize];
 		this.reedSolomonDecoding(buffer, compressedData, factor, blockSize);
@@ -489,7 +504,7 @@ public class DwgReader : CadReaderBase<DwgReaderConfiguration>
 				{
 					//Read the stream normally
 					byte[] buffer = new byte[section.CompressedSize];
-					sreader.Stream.Read(buffer, 0, (int)section.CompressedSize);
+					readExactly(sreader.Stream, buffer, (int)section.CompressedSize);
 					memoryStream.Write(buffer, 0, (int)section.CompressedSize);
 				}
 			}
@@ -532,7 +547,7 @@ public class DwgReader : CadReaderBase<DwgReaderConfiguration>
 
 				//Get the page data
 				byte[] pageBytes = new byte[pageData.Size];
-				this._fileStream.Stream.Read(pageBytes, 0, (int)pageData.Size);
+				readExactly(this._fileStream.Stream, pageBytes, (int)pageData.Size);
 
 				if (section.Encoding == 4)
 				{

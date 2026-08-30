@@ -58,7 +58,7 @@ namespace ACadSharp.IO.DWG
 		public override int Read(byte[] buffer, int offset, int count)
 		{
 			int nbytes = _stream.Read(buffer, offset, count);
-			int length = offset + count;
+			int length = offset + nbytes;
 
 			for (int index = offset; index < length; ++index)
 			{
