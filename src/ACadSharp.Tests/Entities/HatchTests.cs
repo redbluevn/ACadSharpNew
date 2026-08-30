@@ -10,6 +10,34 @@ namespace ACadSharp.Tests.Entities;
 
 public class HatchTests : CommonEntityTests<Hatch>
 {
+	[Fact]
+	public void PolylineTransformDoesNotTreatTheBulgeAsHeight()
+	{
+		Hatch.BoundaryPath.Polyline edge = new Hatch.BoundaryPath.Polyline();
+		edge.Vertices.Add(new XYZ(2, 3, 4));
+
+		edge.ApplyTransform(Transform.CreateRotation(XYZ.AxisY, Math.PI / 2));
+
+		Assert.Equal(0.0, edge.Vertices[0].X, 9);
+		Assert.Equal(3.0, edge.Vertices[0].Y, 9);
+		Assert.Equal(4.0, edge.Vertices[0].Z, 9);
+	}
+
+	[Fact]
+	public void AssociativeSourceEntitiesDoNotExpandTheBoundaryBox()
+	{
+		Hatch hatch = new Hatch();
+		Hatch.BoundaryPath path = new Hatch.BoundaryPath();
+		path.Edges.Add(new Hatch.BoundaryPath.Line { Start = new XY(1, 2), End = new XY(3, 4) });
+		path.Entities.Add(new Line(new XYZ(100, 100, 0), new XYZ(200, 200, 0)));
+		hatch.Paths.Add(path);
+
+		BoundingBox box = hatch.GetBoundingBox();
+
+		Assert.Equal(new XYZ(1, 2, 0), box.Min);
+		Assert.Equal(new XYZ(3, 4, 0), box.Max);
+	}
+
 [Fact]
 	public void APolylineBoundaryIsBoxedFlatAndFollowsItsBulge()
 	{

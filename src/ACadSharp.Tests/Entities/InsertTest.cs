@@ -200,6 +200,21 @@ public class InsertTest
 		Assert.Equal(new XYZ(5, 6, 7), box.Max);
 	}
 
+	[Fact]
+	public void UnresolvedBlockStillUsesTheInsertNormal()
+	{
+		Insert insert = new Insert
+		{
+			InsertPoint = new XYZ(5, 6, 7),
+			Normal = new XYZ(0, 0, -1),
+		};
+
+		BoundingBox box = insert.GetBoundingBox();
+
+		Assert.Equal(new XYZ(-5, 6, -7), box.Min);
+		Assert.Equal(box.Min, box.Max);
+	}
+
 		[Fact]
 	public void GetBoundingBoxIsClippedByTheSpatialFilter()
 	{
@@ -226,6 +241,21 @@ public class InsertTest
 
 		Assert.Equal(new XYZ(15, 15, 0), box.Min);
 		Assert.Equal(new XYZ(55, 55, 0), box.Max);
+	}
+
+	[Fact]
+	public void ADisjointSpatialFilterLeavesNoInsertExtents()
+	{
+		BlockRecord record = new BlockRecord(this._blockName);
+		record.Entities.Add(new Line(XYZ.Zero, new XYZ(10, 10, 0)));
+
+		Insert insert = new Insert(record);
+		SpatialFilter filter = new SpatialFilter(SpatialFilter.SpatialFilterEntryName);
+		filter.BoundaryPoints.Add(new XY(20, 20));
+		filter.BoundaryPoints.Add(new XY(30, 30));
+		insert.SpatialFilter = filter;
+
+		Assert.Equal(BoundingBoxExtent.Null, insert.GetBoundingBox().Extent);
 	}
 
 	[Fact]

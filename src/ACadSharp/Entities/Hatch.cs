@@ -363,11 +363,15 @@ public partial class Hatch : Entity, IOrientable
 				}));
 			}
 
-			//A derived boundary holds whole entities, each carrying its own extrusion, so those are
-			//already in world coordinates and must not be mapped a second time.
-			foreach (Entity entity in bp.Entities)
+			//Edges are the hatch boundary. Entities are associative source objects and can be stale
+			//or extend beyond the current boundary, so merging both overstates the hatch extents.
+			//Keep the old entity-only fallback for a partially constructed path with no edges.
+			if (bp.Edges.Count == 0)
 			{
-				box = box.Merge(entity.GetBoundingBox());
+				foreach (Entity entity in bp.Entities)
+				{
+					box = box.Merge(entity.GetBoundingBox());
+				}
 			}
 		}
 

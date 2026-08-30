@@ -419,7 +419,9 @@ public class Insert : Entity, IOrientable
 		//Block null rather than refuse the file, so this has to survive the same way.
 		if (this.Block == null)
 		{
-			return new BoundingBox(this.InsertPoint);
+			//InsertPoint is stored in the insert's object coordinate system. Even without a
+			//resolved block, the reported point still has to follow the extrusion normal.
+			return new BoundingBox(this.GetTransform().ApplyTransform(XYZ.Zero));
 		}
 
 		BoundingBox box = this.Block.GetBoundingBox();
@@ -440,7 +442,14 @@ public class Insert : Entity, IOrientable
 			XYZ clipMin = new XYZ(Math.Max(box.Min.X, clip.Min.X), Math.Max(box.Min.Y, clip.Min.Y), box.Min.Z);
 			XYZ clipMax = new XYZ(Math.Min(box.Max.X, clip.Max.X), Math.Min(box.Max.Y, clip.Max.Y), box.Max.Z);
 
-			if (clipMin.X <= clipMax.X && clipMin.Y <= clipMax.Y)
+			if (clipMin.X > clipMax.X || clipMin.Y > clipMax.Y)
+			{
+				//The clip and the block do not overlap, so none of the insert contributes to
+				//the drawing extents. Keeping the original box here made a fully clipped insert
+				//look exactly like an unclipped one.
+				return BoundingBox.Null;
+			}
+			else
 			{
 				box = new BoundingBox(clipMin, clipMax);
 			}

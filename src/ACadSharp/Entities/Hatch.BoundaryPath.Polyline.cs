@@ -88,7 +88,9 @@ public partial class Hatch
 				for (int i = 0; i < arr.Length; i++)
 				{
 					var bulge = arr[i].Z;
-					var v = transform.ApplyTransform(arr[i]);
+					//Z stores the bulge, not a coordinate. Feeding it to the transform lets a
+					//rotation or shear move X/Y according to the curvature value.
+					var v = transform.ApplyTransform(new XYZ(arr[i].X, arr[i].Y, 0));
 					v.Z = bulge;
 
 					this.Vertices.Add(v);
