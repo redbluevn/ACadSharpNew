@@ -6137,12 +6137,18 @@ namespace ACadSharp.IO.DWG
 
 		private Matrix4 read4x3Matrix()
 		{
+			//Both formats record this as three rows of four with the translation in the fourth
+			//column. Stored that way round the matrix is transposed with respect to every other
+			//Matrix4 in the library - CreateTranslation writes M30/M31/M32 and the multiply
+			//operator reads the translation from there - so it silently drops its own translation
+			//when applied to a point. The DXF path already lands in the library's convention;
+			//transposing here makes the two agree, which is what a DWG-to-DXF comparison needs.
 			Matrix4 identity = Matrix4.Identity;
 			for (int i = 0; i < 3; i++)
 			{
 				for (int j = 0; j < 4; j++)
 				{
-					identity[i, j] = this._mergedReaders.ReadBitDouble();
+					identity[j, i] = this._mergedReaders.ReadBitDouble();
 				}
 			}
 			return identity;

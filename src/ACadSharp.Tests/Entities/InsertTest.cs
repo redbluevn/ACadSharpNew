@@ -214,10 +214,11 @@ public class InsertTest
 		filter.BoundaryPoints.Add(new XY(20, 20));
 		filter.BoundaryPoints.Add(new XY(60, 60));
 
-		//Both formats record this matrix with the translation in the fourth column, which is the
-		//transpose of the layout Matrix4's own operators read. Building it the same way here keeps
-		//the test honest about what a file actually holds.
-		filter.InverseInsertTransform = Matrix4.CreateTranslation(new XYZ(-5, -5, 0)).Transpose();
+		//Both readers now land this matrix in the library's own convention - the one
+		//CreateTranslation writes and the multiply operator reads - so it is built here the
+		//ordinary way. The formats record it transposed; that is the readers' business, not this
+		//test's, and a DWG-to-DXF comparison is what proves the two agree.
+		filter.InverseInsertTransform = Matrix4.CreateTranslation(new XYZ(-5, -5, 0));
 
 		insert.SpatialFilter = filter;
 

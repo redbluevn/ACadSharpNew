@@ -1818,14 +1818,19 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 			this._writer.Write(41, filter.BackDistance, map);
 		}
 
+		//Each of the three rows the format wants is a COLUMN of the matrix as the library holds it -
+		//that is exactly what Matrix4(double[]) undoes on the way back in, mapping elements 0..3 to
+		//M00, M10, M20, M30. Writing the fields in name order instead emits a column of zeros where
+		//the translation should be and never writes the translation at all, which is how a clip
+		//boundary came back from a DXF round trip as an identity.
 		double[] array = new double[24]
 		{
-			filter.InverseInsertTransform.M00, filter.InverseInsertTransform.M01, filter.InverseInsertTransform.M02, filter.InverseInsertTransform.M03,
-			filter.InverseInsertTransform.M10, filter.InverseInsertTransform.M11, filter.InverseInsertTransform.M12, filter.InverseInsertTransform.M13,
-			filter.InverseInsertTransform.M20, filter.InverseInsertTransform.M21, filter.InverseInsertTransform.M22, filter.InverseInsertTransform.M23,
-			filter.InsertTransform.M00, filter.InsertTransform.M01, filter.InsertTransform.M02, filter.InsertTransform.M03,
-			filter.InsertTransform.M10, filter.InsertTransform.M11, filter.InsertTransform.M12, filter.InsertTransform.M13,
-			filter.InsertTransform.M20, filter.InsertTransform.M21, filter.InsertTransform.M22, filter.InsertTransform.M23
+			filter.InverseInsertTransform.M00, filter.InverseInsertTransform.M10, filter.InverseInsertTransform.M20, filter.InverseInsertTransform.M30,
+			filter.InverseInsertTransform.M01, filter.InverseInsertTransform.M11, filter.InverseInsertTransform.M21, filter.InverseInsertTransform.M31,
+			filter.InverseInsertTransform.M02, filter.InverseInsertTransform.M12, filter.InverseInsertTransform.M22, filter.InverseInsertTransform.M32,
+			filter.InsertTransform.M00, filter.InsertTransform.M10, filter.InsertTransform.M20, filter.InsertTransform.M30,
+			filter.InsertTransform.M01, filter.InsertTransform.M11, filter.InsertTransform.M21, filter.InsertTransform.M31,
+			filter.InsertTransform.M02, filter.InsertTransform.M12, filter.InsertTransform.M22, filter.InsertTransform.M32
 		};
 
 		for (int i = 0; i < array.Length; i++)

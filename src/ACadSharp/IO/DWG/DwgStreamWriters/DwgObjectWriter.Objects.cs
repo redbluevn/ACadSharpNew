@@ -84,11 +84,14 @@ internal partial class DwgObjectWriter : DwgSectionIO
 
 	private void write4x3Matrix(Matrix4 matrix)
 	{
+		//Transposed on the way out, to undo what read4x3Matrix does on the way in: the file wants
+		//three rows of four with the translation in the fourth column, the library holds it the
+		//other way round.
 		for (int i = 0; i < 3; i++)
 		{
 			for (int j = 0; j < 4; j++)
 			{
-				this._writer.WriteBitDouble(matrix[i, j]);
+				this._writer.WriteBitDouble(matrix[j, i]);
 			}
 		}
 	}

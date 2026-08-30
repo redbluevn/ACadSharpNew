@@ -432,12 +432,7 @@ public class Insert : Entity, IOrientable
 		SpatialFilter filter = this.SpatialFilter;
 		if (filter != null && filter.BoundaryPoints.Count > 1)
 		{
-			//Both DWG and DXF record this matrix as three rows of four with the translation in the
-			//fourth column, and the readers store it exactly so. Matrix4 multiplies a point with the
-			//translation read from the fourth ROW, so the stored matrix has to be transposed before
-			//it means anything - applied as it stands it silently drops the translation, which is
-			//the whole of what this particular matrix carries.
-			Matrix4 toBlock = filter.InverseInsertTransform.Transpose();
+			Matrix4 toBlock = filter.InverseInsertTransform;
 
 			BoundingBox clip = BoundingBox.FromPoints(
 				filter.BoundaryPoints.Select(p => toBlock * new XYZ(p.X, p.Y, 0)));
