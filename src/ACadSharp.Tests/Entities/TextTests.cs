@@ -1,4 +1,4 @@
-using ACadSharp.Entities;
+﻿using ACadSharp.Entities;
 using ACadSharp.Tests.Common;
 using CSMath;
 using Xunit;
@@ -16,7 +16,23 @@ namespace ACadSharp.Tests.Entities
 			Assert.Equal(new BoundingBox(new XYZ(5, 5, 5)), b);
 		}
 
-		[Fact]
+[Fact]
+		public void MirroredTextIsBoxedThroughItsNormal()
+		{
+			//The insertion point is stored in the text's own object coordinate system, so the
+			//(0,0,-1) normal AutoCAD writes for mirrored text puts it at the negated X.
+			TextEntity text = new TextEntity
+			{
+				InsertPoint = new XYZ(10, 5, 2),
+				Normal = new XYZ(0, 0, -1),
+			};
+
+			BoundingBox box = text.GetBoundingBox();
+
+			AssertUtils.AreEqual(new XYZ(-10, 5, -2), box.Min);
+		}
+
+				[Fact]
 		public void TranslationTest()
 		{
 			XYZ newLocation = this._random.NextXYZ();
