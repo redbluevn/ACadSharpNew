@@ -3,6 +3,7 @@ using CSMath;
 using CSMath.Geometry;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace ACadSharp.Entities;
 
@@ -218,9 +219,49 @@ public class Arc : Circle
 	/// <inheritdoc/>
 	public override BoundingBox GetBoundingBox()
 	{
-		List<XYZ> vertices = this.PolygonalVertexes(256);
+		Matrix4 toWorld = Matrix4.GetArbitraryAxis(this.Normal.Normalize());
+		XYZ center = toWorld * this.Center;
+		XYZ x = (toWorld * (this.Center + this.Radius * XYZ.AxisX)) - center;
+		XYZ y = (toWorld * (this.Center + this.Radius * XYZ.AxisY)) - center;
 
-		return BoundingBox.FromPoints(vertices);
+		List<double> angles = new() { this.StartAngle, this.EndAngle };
+		addExtremaAngles(angles, x.X, y.X);
+		addExtremaAngles(angles, x.Y, y.Y);
+		addExtremaAngles(angles, x.Z, y.Z);
+
+		return BoundingBox.FromPoints(angles
+			.Where(this.isAngleInSweep)
+			.Select(angle => center + Math.Cos(angle) * x + Math.Sin(angle) * y));
+	}
+
+	private static void addExtremaAngles(List<double> angles, double cosineCoefficient, double sineCoefficient)
+	{
+		if (MathHelper.IsZero(cosineCoefficient) && MathHelper.IsZero(sineCoefficient))
+		{
+			return;
+		}
+
+		double angle = Math.Atan2(sineCoefficient, cosineCoefficient);
+		angles.Add(angle);
+		angles.Add(angle + Math.PI);
+	}
+
+	private bool isAngleInSweep(double angle)
+	{
+		double start = MathHelper.NormalizeAngleRadians(this.StartAngle);
+		double sweep = (this.EndAngle - this.StartAngle) % MathHelper.TwoPI;
+		if (sweep <= 0)
+		{
+			sweep += MathHelper.TwoPI;
+		}
+
+		double offset = MathHelper.NormalizeAngleRadians(angle) - start;
+		if (offset < 0)
+		{
+			offset += MathHelper.TwoPI;
+		}
+
+		return offset <= sweep + MathHelper.Epsilon;
 	}
 
 	/// <summary>

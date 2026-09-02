@@ -41,6 +41,35 @@ public class DwgReader : CadReaderBase<DwgReaderConfiguration>
 		}
 	}
 
+	internal static byte[] decodeAc21HeaderMetadata(byte[] decodedData, int compressedLength)
+	{
+		const int dataOffset = 32;
+		const int metadataLength = 0x110;
+		byte[] metadata = new byte[metadataLength];
+
+		if (compressedLength < 0)
+		{
+			long storedLength = -(long)compressedLength;
+			if (storedLength != metadataLength || decodedData.Length - dataOffset < storedLength)
+			{
+				throw new InvalidDataException($"Invalid uncompressed R2007 header length: {storedLength}.");
+			}
+
+			Buffer.BlockCopy(decodedData, dataOffset, metadata, 0, metadataLength);
+		}
+		else
+		{
+			if (decodedData.Length - dataOffset < compressedLength)
+			{
+				throw new InvalidDataException($"Invalid compressed R2007 header length: {compressedLength}.");
+			}
+
+			new DwgLZ77AC21Decompressor().Decompress(decodedData, dataOffset, (uint)compressedLength, metadata);
+		}
+
+		return metadata;
+	}
+
 	/// <summary>
 	/// Initializes a new instance of the <see cref="DwgReader"/> class.
 	/// </summary>
@@ -1225,19 +1254,9 @@ public class DwgReader : CadReaderBase<DwgReaderConfiguration>
 		//0x1C	4	Length2
 		int length2 = LittleEndianConverter.Instance.ToInt32(decodedData, 28);
 
-		//The decompressed size is a fixed 0x110.
-		byte[] buffer = new byte[0x110];
-		//If ComprLen is negative, then Data is not compressed (and data length is ComprLen).
-		if (comprLen < 0)
-		{
-			//buffer = decodedData
-			throw new NotImplementedException();
-		}
-		//If ComprLen is positive, the ComprLen bytes of data are compressed
-		else
-		{
-			new DwgLZ77AC21Decompressor().Decompress(decodedData, 32U, (uint)comprLen, buffer);
-		}
+		//A negative ComprLen means the fixed 0x110-byte metadata block is stored verbatim.
+		//A positive value is the number of compressed bytes beginning at offset 0x20.
+		byte[] buffer = decodeAc21HeaderMetadata(decodedData, comprLen);
 
 		//Get the descompressed stream to read the records
 		StreamIO decompressed = new StreamIO(buffer);

@@ -79,6 +79,47 @@ namespace ACadSharp.Tests.Entities
 		}
 
 		[Fact]
+		public void GetBoundingBoxIncludesAnUnsampledExtremumExactly()
+		{
+			Arc arc = new Arc(XYZ.Zero, 1_000_000, 0, Math.PI);
+
+			BoundingBox box = arc.GetBoundingBox();
+
+			Assert.Equal(1_000_000, box.Max.Y);
+			Assert.Equal(-1_000_000, box.Min.X);
+			Assert.Equal(1_000_000, box.Max.X);
+		}
+
+		[Fact]
+		public void GetBoundingBoxIsExactInAnArbitraryPlane()
+		{
+			Arc arc = new Arc(XYZ.Zero, 5, 0, Math.PI)
+			{
+				Normal = XYZ.AxisX,
+			};
+
+			BoundingBox box = arc.GetBoundingBox();
+
+			Assert.Equal(0, box.Min.X);
+			Assert.Equal(0, box.Max.X);
+			Assert.Equal(-5, box.Min.Y);
+			Assert.Equal(5, box.Max.Y);
+			Assert.Equal(0, box.Min.Z, 12);
+			Assert.Equal(5, box.Max.Z);
+		}
+
+		[Fact]
+		public void GetBoundingBoxTreatsEquivalentAnglesAsAFullSweep()
+		{
+			Arc arc = new Arc(XYZ.Zero, 5, MathHelper.TwoPI, 0);
+
+			BoundingBox box = arc.GetBoundingBox();
+
+			Assert.Equal(new XYZ(-5, -5, 0), box.Min);
+			Assert.Equal(new XYZ(5, 5, 0), box.Max);
+		}
+
+		[Fact]
 		public void GetCenter()
 		{
 			XY start = new XY(1, 0);

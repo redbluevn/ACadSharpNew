@@ -1,6 +1,7 @@
 ﻿using ACadSharp.Classes;
 using ACadSharp.Entities;
 using ACadSharp.Header;
+using ACadSharp.IO;
 using ACadSharp.Objects;
 using ACadSharp.Objects.Collections;
 using ACadSharp.Prototype1b;
@@ -436,9 +437,25 @@ public class CadDocument : IHandledCadObject
 			.Count(c => c.ObjectName == dxfName);
 	}
 
+	/// <summary>
+	/// Determines whether every object in the document is valid for DWG output at the document's current version.
+	/// </summary>
+	/// <returns><see langword="true"/> when every object is valid; otherwise, <see langword="false"/>.</returns>
 	public bool IsValid()
 	{
-		throw new NotImplementedException();
+		return this.IsValid(CadFileFormat.DWG);
+	}
+
+	/// <summary>
+	/// Determines whether every object in the document is valid for the specified output format at the document's current version.
+	/// </summary>
+	/// <param name="format">The output format to validate.</param>
+	/// <returns><see langword="true"/> when every object is valid; otherwise, <see langword="false"/>.</returns>
+	public bool IsValid(CadFileFormat format)
+	{
+		return this._cadObjects.Values
+			.OfType<CadObject>()
+			.All(item => item.IsValid(format, this.Header.Version));
 	}
 
 	/// <summary>

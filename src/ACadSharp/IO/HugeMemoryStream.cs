@@ -63,19 +63,46 @@ namespace ACadSharp.IO
 		{
 			get => this._position; set
 			{
+				if (value < 0)
+				{
+					throw new ArgumentOutOfRangeException(nameof(value));
+				}
+
 				this._position = value;
-				this._currentChunk = this._chunks[(int)(value >> _maxChunkShift)];
-				this._currentInChunk = (int)(value & _maxChunkMask);
+				if (value >= this._length)
+				{
+					this._currentChunk = null;
+					this._currentInChunk = 0;
+				}
+				else
+				{
+					this._currentChunk = this._chunks[(int)(value >> _maxChunkShift)];
+					this._currentInChunk = (int)(value & _maxChunkMask);
+				}
 			}
 		}
 
 		public override void Flush()
 		{
-			throw new System.NotImplementedException();
+		}
+
+		private static void validateBufferArguments(byte[] buffer, int offset, int count)
+		{
+			if (buffer == null) throw new ArgumentNullException(nameof(buffer));
+			if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset));
+			if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
+			if (buffer.Length - offset < count) throw new ArgumentException("Offset and count exceed the buffer length.");
 		}
 
 		public override int Read(byte[] buffer, int offset, int count)
 		{
+			validateBufferArguments(buffer, offset, count);
+			if (count == 0 || this._position >= this._length)
+			{
+				return 0;
+			}
+
+			count = (int)Math.Min(count, this._length - this._position);
 			if (count == 1)
 			{
 				buffer[offset] = this._currentChunk[this._currentInChunk];
@@ -99,6 +126,11 @@ namespace ACadSharp.IO
 
 		public override int ReadByte()
 		{
+			if (this._position >= this._length)
+			{
+				return -1;
+			}
+
 			byte value = this._currentChunk[this._currentInChunk];
 			this.Position++;
 			return value;
@@ -106,16 +138,35 @@ namespace ACadSharp.IO
 
 		public override long Seek(long offset, SeekOrigin origin)
 		{
-			throw new NotImplementedException();
+			long position = origin switch
+			{
+				SeekOrigin.Begin => offset,
+				SeekOrigin.Current => checked(this._position + offset),
+				SeekOrigin.End => checked(this._length + offset),
+				_ => throw new ArgumentOutOfRangeException(nameof(origin)),
+			};
+
+			this.Position = position;
+			return position;
 		}
 
 		public override void SetLength(long value)
 		{
-			throw new NotImplementedException();
+			throw new NotSupportedException("HugeMemoryStream has a fixed length.");
 		}
 
 		public override void Write(byte[] buffer, int offset, int count)
 		{
+			validateBufferArguments(buffer, offset, count);
+			if (count == 0)
+			{
+				return;
+			}
+			if (this._position > this._length - count)
+			{
+				throw new NotSupportedException("HugeMemoryStream has a fixed length.");
+			}
+
 			if (count == 1)
 			{
 				this._currentChunk[this._currentInChunk] = buffer[offset];
@@ -139,6 +190,11 @@ namespace ACadSharp.IO
 
 		public override void WriteByte(byte value)
 		{
+			if (this._position >= this._length)
+			{
+				throw new NotSupportedException("HugeMemoryStream has a fixed length.");
+			}
+
 			this._currentChunk[this._currentInChunk] = value;
 			this.Position++;
 		}

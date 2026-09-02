@@ -1,5 +1,6 @@
 using ACadSharp.IO.DWG;
 using ACadSharp.IO.DWG.DwgStreamWriters;
+using ACadSharp.IO;
 using System;
 using System.IO;
 using System.Collections.Generic;
@@ -30,6 +31,28 @@ public class Dwg21CodecProbeTests
 	private static string samplePath => Path.Combine(TestVariables.SamplesFolder, "sample_AC1021.dwg");
 
 	private static byte[] readFile() => File.ReadAllBytes(samplePath);
+
+	[Fact]
+	public void UncompressedHeaderMetadataIsCopiedVerbatim()
+	{
+		byte[] decoded = new byte[32 + 0x110];
+		for (int i = 0; i < 0x110; i++)
+		{
+			decoded[32 + i] = (byte)i;
+		}
+
+		byte[] metadata = DwgReader.decodeAc21HeaderMetadata(decoded, -0x110);
+
+		Assert.Equal(decoded.Skip(32), metadata);
+	}
+
+	[Fact]
+	public void InvalidUncompressedHeaderLengthIsRejected()
+	{
+		byte[] decoded = new byte[32 + 0x10F];
+
+		Assert.Throws<InvalidDataException>(() => DwgReader.decodeAc21HeaderMetadata(decoded, -0x110));
+	}
 
 	//The reader's de-interleave, reproduced here in miniature: byte j of block b sits at
 	//position b + factor * j.

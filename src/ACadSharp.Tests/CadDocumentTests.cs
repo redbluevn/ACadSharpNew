@@ -3,6 +3,7 @@ using ACadSharp.Tables;
 using Xunit;
 using ACadSharp.Tests.Common;
 using ACadSharp.Entities;
+using ACadSharp.IO;
 using Xunit.Abstractions;
 using ACadSharp.Blocks;
 using System.Linq;
@@ -39,6 +40,21 @@ public class CadDocumentTests
 	{
 		this._output = output;
 		this._docIntegrity = new DocumentIntegrity(output);
+	}
+
+	[Fact]
+	public void IsValidChecksEveryDocumentObject()
+	{
+		CadDocument doc = new CadDocument();
+		Line invalid = new Line { Normal = CSMath.XYZ.Zero };
+		doc.Entities.Add(invalid);
+
+		Assert.False(doc.IsValid());
+		Assert.False(doc.IsValid(CadFileFormat.DXF));
+
+		invalid.Normal = CSMath.XYZ.AxisZ;
+		Assert.True(doc.IsValid());
+		Assert.True(doc.IsValid(CadFileFormat.DXF));
 	}
 
 	[Fact]
