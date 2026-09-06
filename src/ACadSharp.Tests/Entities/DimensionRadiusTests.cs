@@ -2,13 +2,13 @@
 using Xunit;
 using CSMath;
 
-namespace ACadSharp.Tests.Entities
-{
-	public class DimensionRadiusTests : CommonDimensionTests<DimensionRadius>
-	{
-		public override DimensionType Type => DimensionType.Radius;
+namespace ACadSharp.Tests.Entities;
 
-		public override void GetBoundingBoxTest()
+public class DimensionRadiusTests : CommonDimensionTests<DimensionRadius>
+{
+	public override DimensionType Type => DimensionType.Radius;
+
+	public override void GetBoundingBoxTest()
 	{
 		//Laid out far from the origin, the way a real drawing is. AngleVertex is a point on the
 		//measured curve; treating it as a half-size used to return a box that straddled (0,0) and was
@@ -19,9 +19,9 @@ namespace ACadSharp.Tests.Entities
 			AngleVertex = new XYZ(1010, 2000, 0),
 			TextMiddlePoint = new XYZ(1005, 2005, 0),
 		};
-	
+
 		BoundingBox box = dim.GetBoundingBox();
-	
+
 		Assert.Equal(new XYZ(1000, 2000, 0), box.Min);
 		Assert.Equal(new XYZ(1010, 2005, 0), box.Max);
 	}
@@ -34,6 +34,5 @@ namespace ACadSharp.Tests.Entities
 			};
 
 			return dim;
-		}
 	}
 }

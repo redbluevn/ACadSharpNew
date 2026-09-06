@@ -24,14 +24,7 @@ public abstract class Entity : CadObject, IEntity
 		get { return this._bookColor; }
 		set
 		{
-			if (this.Document != null)
-			{
-				this._bookColor = updateCollection(value, this.Document.Colors);
-			}
-			else
-			{
-				this._bookColor = value;
-			}
+			this._bookColor = this.updateCollectionEntry(value, c => this._bookColor = c, this.Document?.Colors);
 		}
 	}
 
@@ -55,7 +48,7 @@ public abstract class Entity : CadObject, IEntity
 				throw new ArgumentNullException(nameof(value));
 			}
 
-			this._layer = updateCollection(value, this.Document?.Layers);
+			this._layer = updateTableEntry(value, l => this._layer = l, this.Document?.Layers);
 		}
 	}
 
@@ -71,7 +64,7 @@ public abstract class Entity : CadObject, IEntity
 				throw new ArgumentNullException(nameof(value));
 			}
 
-			this._lineType = updateCollection(value, this.Document?.LineTypes);
+			this._lineType = updateTableEntry(value, l => this._lineType = l, this.Document?.LineTypes);
 		}
 	}
 
@@ -90,13 +83,7 @@ public abstract class Entity : CadObject, IEntity
 		get { return this._material; }
 		set
 		{
-			if (value == null)
-			{
-				this._material = null;
-				return;
-			}
-
-			this._material = updateCollection(value, this.Document?.Materials);
+			this._material = this.updateCollectionEntry(value, m => this._material = m, this.Document?.Materials);
 		}
 	}
 
@@ -129,7 +116,7 @@ public abstract class Entity : CadObject, IEntity
 
 	private LineType _lineType;
 
-	private Material _material;
+	private Material _material = null;
 
 	/// <inheritdoc/>
 	public Entity() : base() { }
@@ -283,46 +270,51 @@ public abstract class Entity : CadObject, IEntity
 		this.Transparency = entity.Transparency;
 	}
 
-	private static T resolveDefault<T>(T current, Table<T> table, string defaultName, Func<T> build)
+	private T resolveDefault<T>(T current, Table<T> table, string defaultName, Action<T> assign, Func<T> build)
 		where T : TableEntry
 	{
-		if (current != null)
+		//An entity that never had a layer assigned would otherwise build its default here only to
+		//throw it away: Layer.Default builds a Layer, whose constructor builds a LineType of its
+		//own, and the table then returns the entry of the same name instead. The document always
+		//carries layer "0" and linetype "ByLayer", so the name is looked up directly and neither
+		//object is built. Building one stays as the fallback for a document that is missing them.
+		if (current == null && table != null && table.TryGetValue(defaultName, out T entry))
 		{
-			return updateCollection(current, table);
+			current = entry;
 		}
 
-		if (table != null && table.TryGetValue(defaultName, out T entry))
-		{
-			return entry;
-		}
-
-		return updateCollection(build(), table);
+		return this.updateTableEntry(current ?? build(), assign, table);
 	}
 
 	internal override void AssignDocument(CadDocument doc)
 	{
 		base.AssignDocument(doc);
 
-		//An entity that never had a layer assigned would otherwise build its default here only to
-		//throw it away: reading this.Layer creates a Layer, whose constructor creates a LineType of
-		//its own, and TryAdd then returns the table entry of the same name instead. The document
-		//always carries layer "0" and linetype "ByLayer", so the name is looked up directly and the
-		//two objects are never built. Building them stays as the fallback for a document that is
-		//missing them.
-		this._layer = resolveDefault(this._layer, doc.Layers, Layer.DefaultName, static () => Layer.Default);
-		this._lineType = resolveDefault(this._lineType, doc.LineTypes, LineType.ByLayerName, static () => LineType.ByLayer);
+		this._bookColor = this.updateCollectionEntry(this._bookColor, c => this._bookColor = c, doc.Colors);
+		this._material = this.updateCollectionEntry(this._material, m => this._material = m, doc.Materials);
 
-		//The layer, line type and material tables used to be subscribed to here, one delegate per
-		//entity per table. The document calls OnTableEntryRemoved instead; see CadObject.
+		//Through resolveDefault rather than updateTableEntry directly: the fields start null (see
+		//their declaration) and upstream's helper returns a null entry untouched, which would leave
+		//the entity holding a default the document's table never saw.
+		this._layer = this.resolveDefault(this._layer, doc.Layers, Layer.DefaultName, l => this._layer = l, static () => Layer.Default);
+		this._lineType = this.resolveDefault(this._lineType, doc.LineTypes, LineType.ByLayerName, l => this._lineType = l, static () => LineType.ByLayer);
 	}
 
 	internal override void UnassignDocument()
 	{
+		this.Document.Colors.RemoveReference(this._bookColor?.Name, this);
+		this.Document.Materials.RemoveReference(this._material?.Name, this);
+
+		this.Document.Layers.RemoveReference(this.Layer.Name, this);
+		this.Document.LineTypes.RemoveReference(this.LineType.Name, this);
+
 		base.UnassignDocument();
 
-		this.Layer = (Layer)this.Layer.Clone();
-		this.LineType = (LineType)this.LineType.Clone();
-		this.Material = (Material)this.Material?.Clone();
+		this._layer = (Layer)this.Layer.Clone();
+		this._lineType = (LineType)this.LineType.Clone();
+
+		this._bookColor = (BookColor)this.BookColor?.Clone();
+		this._material = (Material)this.Material?.Clone();
 	}
 
 	protected List<XY> applyRotation(IEnumerable<XY> points, double rotation)
@@ -363,24 +355,6 @@ public abstract class Entity : CadObject, IEntity
 		transOW = Matrix3.ArbitraryAxis(normal);
 		transWO = Matrix3.ArbitraryAxis(newNormal).Transpose();
 		return new Matrix3(transform.Matrix);
-	}
-
-	internal override void OnTableEntryRemoved(object sender, CollectionChangedEventArgs e)
-	{
-		if (e.Item.Equals(this.Layer))
-		{
-			this.Layer = this.Document.Layers[Layer.DefaultName];
-		}
-
-		if (e.Item.Equals(this.LineType))
-		{
-			this.LineType = this.Document.LineTypes.ByLayer;
-		}
-
-		if (e.Item.Equals(this.Material))
-		{
-			this.Material = null;
-		}
 	}
 
 	protected XYZ transformNormal(Transform transform, XYZ normal)

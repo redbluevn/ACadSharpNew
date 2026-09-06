@@ -52,11 +52,11 @@ public static class DxfFileToken
 
 	public const string EntityArc = "ARC";
 
+	public const string EntityArcDimension = "ARC_DIMENSION";
+
 	public const string EntityAttribute = "ATTRIB";
 
 	public const string EntityAttributeDefinition = "ATTDEF";
-
-	public const string EntityArcDimension = "ARC_DIMENSION";
 
 	public const string EntityBody = "BODY";
 
@@ -308,6 +308,8 @@ public static class DxfFileToken
 	public const string ObjectTableStyle = "TABLESTYLE";
 
 	public const string ObjectVisualStyle = "VISUALSTYLE";
+
+	public const string ObjectWipeoutVariables = "WIPEOUTVARIABLES";
 
 	public const string ObjectXRecord = "XRECORD";
 

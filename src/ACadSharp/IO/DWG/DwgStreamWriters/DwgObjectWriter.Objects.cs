@@ -75,7 +75,6 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			case UnknownNonGraphicalObject unknownObject when !this.canWriteRawObject(unknownObject):
 			case VisualStyle visualStyle when !this.canWriteVisualStyle(visualStyle):
 			case ProxyObject:
-			case MTextAttributeObjectContextData:
 				return true;
 		}
 
@@ -102,6 +101,8 @@ internal partial class DwgObjectWriter : DwgSectionIO
 
 	private void writeAnnotScaleObjectContextData(AnnotScaleObjectContextData annotScaleObjectContextData)
 	{
+		this.writeObjectContextData(annotScaleObjectContextData);
+
 		this._writer.HandleReference(DwgReferenceType.HardPointer, annotScaleObjectContextData.Scale);
 	}
 
@@ -472,6 +473,17 @@ internal partial class DwgObjectWriter : DwgSectionIO
 
 		//unknown
 		this._writer.WriteBitLong(0);
+	}
+
+	private void writeBlockReferenceObjectContextData(BlockReferenceObjectContextData contextData)
+	{
+		this.writeAnnotScaleObjectContextData(contextData);
+
+		this._writer.WriteBitDouble(contextData.Rotation);
+		this._writer.Write3BitDouble(contextData.InsertionPoint);
+		this._writer.WriteBitDouble(contextData.XScale);
+		this._writer.WriteBitDouble(contextData.YScale);
+		this._writer.WriteBitDouble(contextData.ZScale);
 	}
 
 	private void writeBlockRepresentationData(BlockRepresentationData representation)
@@ -1863,9 +1875,18 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		}
 	}
 
+	private void writeMTextAttributeObjectContextData(MTextAttributeObjectContextData mtextContextData)
+	{
+		throw new NotImplementedException();
+	}
+
 	private void writeMultiLeaderAnnotContext(MultiLeaderObjectContextData multiLeaderAnnotContext)
 	{
-		writeMultiLeaderAnnotContextSubObject(multiLeaderAnnotContext);
+		this.writeAnnotScaleObjectContextData(multiLeaderAnnotContext);
+
+		//One argument: the `false` branch upstream asks for here is the reader's own guess, which
+		//AutoCAD 2027 judged wrong (a zero count then seven bits). See the method's own remark.
+		this.writeMultiLeaderAnnotContextSubObject(multiLeaderAnnotContext);
 	}
 
 	private void writeMultiLeaderStyle(MultiLeaderStyle mLeaderStyle)
@@ -2117,6 +2138,12 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			case BookColor bookColor:
 				this.writeBookColor(bookColor);
 				break;
+			//The annotative context of a block reference: where that INSERT sits, and at what
+			//rotation and scale, for one annotation scale. Not a rare thing in a real drawing - the
+			//seventeen client drawings carry 208, 114, 40, 34 and 27 of them (T99).
+			case BlockReferenceObjectContextData blockContextData:
+				this.writeBlockReferenceObjectContextData(blockContextData);
+				break;
 			case CadDictionaryWithDefault dictionarydef:
 				this.writeCadDictionaryWithDefault(dictionarydef);
 				break;
@@ -2162,23 +2189,7 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			case MultiLeaderStyle multiLeaderStyle:
 				this.writeMultiLeaderStyle(multiLeaderStyle);
 				break;
-			//The annotative context of a block reference: where that INSERT sits, and at what
-			//rotation and scale, for one annotation scale. Skipped until now, and it is not a rare
-			//thing in a real drawing - the seventeen client drawings carry 208, 114, 40, 34 and 27
-			//of them (T99). The two halves above it were already written for MULTILEADER; what was
-			//missing is the five fields of its own, in the order its reader takes them.
-			case BlockReferenceObjectContextData blockReferenceContextData:
-				this.writeObjectContextData(blockReferenceContextData);
-				this.writeAnnotScaleObjectContextData(blockReferenceContextData);
-				this._writer.WriteBitDouble(blockReferenceContextData.Rotation);
-				this._writer.Write3BitDouble(blockReferenceContextData.InsertionPoint);
-				this._writer.WriteBitDouble(blockReferenceContextData.XScale);
-				this._writer.WriteBitDouble(blockReferenceContextData.YScale);
-				this._writer.WriteBitDouble(blockReferenceContextData.ZScale);
-				break;
 			case MultiLeaderObjectContextData multiLeaderObjectContextData:
-				this.writeObjectContextData(multiLeaderObjectContextData);
-				this.writeAnnotScaleObjectContextData(multiLeaderObjectContextData);
 				this.writeMultiLeaderAnnotContext(multiLeaderObjectContextData);
 				break;
 			case PdfUnderlayDefinition pdfDefinition:
@@ -2201,6 +2212,12 @@ internal partial class DwgObjectWriter : DwgSectionIO
 				break;
 			case TableStyle tableStyle:
 				this.writeTableStyle(tableStyle);
+				break;
+			case MTextAttributeObjectContextData mtextContextData:
+				this.writeMTextAttributeObjectContextData(mtextContextData);
+				break;
+			case WipeoutVariables wipeoutVariables:
+				this.writeWipeoutVariables(wipeoutVariables);
 				break;
 			case Field field:
 				this.writeField(field);
@@ -2716,6 +2733,13 @@ internal partial class DwgObjectWriter : DwgSectionIO
 				index++;
 			}
 		}
+	}
+
+	private void writeWipeoutVariables(WipeoutVariables wipeoutVariables)
+	{
+		//Common:
+		//Dispfrm BS 70 display image frame
+		this._writer.WriteBitShort(wipeoutVariables.DisplayImageFrame ? (short)1 : (short)0);
 	}
 
 	private void writeXRecord(XRecord xrecord)

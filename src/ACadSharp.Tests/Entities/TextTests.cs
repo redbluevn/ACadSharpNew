@@ -1,46 +1,45 @@
-﻿using ACadSharp.Entities;
+using ACadSharp.Entities;
 using ACadSharp.Tests.Common;
 using CSMath;
 using Xunit;
 
-namespace ACadSharp.Tests.Entities
+namespace ACadSharp.Tests.Entities;
+
+public class TextTests : CommonEntityTests<TextEntity>
 {
-	public class TextTests : CommonEntityTests<TextEntity>
+	public override void GetBoundingBoxTest()
 	{
-		public override void GetBoundingBoxTest()
+		TextEntity text = new TextEntity();
+		text.InsertPoint = new XYZ(5, 5, 5);
+
+		BoundingBox b = text.GetBoundingBox();
+		Assert.Equal(new BoundingBox(new XYZ(5, 5, 5)), b);
+	}
+
+	[Fact]
+	public void MirroredTextIsBoxedThroughItsNormal()
+	{
+		//The insertion point is stored in the text's own object coordinate system, so the
+		//(0,0,-1) normal AutoCAD writes for mirrored text puts it at the negated X.
+		TextEntity text = new TextEntity
 		{
-			TextEntity text = new TextEntity();
-			text.InsertPoint = new XYZ(5, 5, 5);
+			InsertPoint = new XYZ(10, 5, 2),
+			Normal = new XYZ(0, 0, -1),
+		};
 
-			BoundingBox b = text.GetBoundingBox();
-			Assert.Equal(new BoundingBox(new XYZ(5, 5, 5)), b);
-		}
+		BoundingBox box = text.GetBoundingBox();
 
-[Fact]
-		public void MirroredTextIsBoxedThroughItsNormal()
-		{
-			//The insertion point is stored in the text's own object coordinate system, so the
-			//(0,0,-1) normal AutoCAD writes for mirrored text puts it at the negated X.
-			TextEntity text = new TextEntity
-			{
-				InsertPoint = new XYZ(10, 5, 2),
-				Normal = new XYZ(0, 0, -1),
-			};
+		AssertUtils.AreEqual(new XYZ(-10, 5, -2), box.Min);
+	}
 
-			BoundingBox box = text.GetBoundingBox();
+			[Fact]
+	public void TranslationTest()
+	{
+		XYZ newLocation = this._random.NextXYZ();
+		TextEntity text = new TextEntity();
+		Transform transform = Transform.CreateTranslation(newLocation);
 
-			AssertUtils.AreEqual(new XYZ(-10, 5, -2), box.Min);
-		}
-
-				[Fact]
-		public void TranslationTest()
-		{
-			XYZ newLocation = this._random.NextXYZ();
-			TextEntity text = new TextEntity();
-			Transform transform = Transform.CreateTranslation(newLocation);
-
-			text.ApplyTransform(transform);
-			AssertUtils.AreEqual(text.InsertPoint, newLocation);
-		}
+		text.ApplyTransform(transform);
+		AssertUtils.AreEqual(text.InsertPoint, newLocation);
 	}
 }
