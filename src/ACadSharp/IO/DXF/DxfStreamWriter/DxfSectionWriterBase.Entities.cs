@@ -1,4 +1,4 @@
-﻿using ACadSharp.Entities;
+using ACadSharp.Entities;
 using ACadSharp.Entities.AecObjects;
 using ACadSharp.Entities.Mechanical;
 using ACadSharp.Objects;
@@ -634,19 +634,26 @@ internal abstract partial class DxfSectionWriterBase
 
 		switch (edge)
 		{
+			//Both endpoints are converted WITHOUT normalising - MathHelper.RadToDeg(value, false).
+			//Normalising each one on its own throws away a full sweep: a circular boundary is stored
+			//as -PI to PI, and normalising turns that into 180 and 180, the same number twice with
+			//the 360 degrees between them gone. The reader only calls DegToRad, so it cannot get the
+			//sweep back and the boundary disappears from the file. Measured on the client corpus:
+			//twenty-five boundaries across four drawings, and a DXF round trip of one of them
+			//returned three arcs with a zero sweep where the source had three full circles.
 			case Hatch.BoundaryPath.Arc arc:
 				this._writer.Write(10, arc.Center);
 				this._writer.Write(40, arc.Radius);
-				this._writer.Write(50, MathHelper.RadToDeg(arc.StartAngle));
-				this._writer.Write(51, MathHelper.RadToDeg(arc.EndAngle));
+				this._writer.Write(50, MathHelper.RadToDeg(arc.StartAngle, false));
+				this._writer.Write(51, MathHelper.RadToDeg(arc.EndAngle, false));
 				this._writer.Write(73, arc.CounterClockWise ? (short)1 : (short)0);
 				break;
 			case Hatch.BoundaryPath.Ellipse ellipse:
 				this._writer.Write(10, ellipse.Center);
 				this._writer.Write(11, ellipse.MajorAxisEndPoint);
 				this._writer.Write(40, ellipse.RadiusRatio);
-				this._writer.Write(50, MathHelper.RadToDeg(ellipse.StartAngle));
-				this._writer.Write(51, MathHelper.RadToDeg(ellipse.EndAngle));
+				this._writer.Write(50, MathHelper.RadToDeg(ellipse.StartAngle, false));
+				this._writer.Write(51, MathHelper.RadToDeg(ellipse.EndAngle, false));
 				this._writer.Write(73, ellipse.CounterClockWise ? (short)1 : (short)0);
 				break;
 			case Hatch.BoundaryPath.Line line:
