@@ -1569,7 +1569,11 @@ internal partial class DwgObjectWriter : DwgSectionIO
 				//Background color CMC 63
 				this._writer.WriteCmColor(mtext.BackgroundColor);
 				//Background transparency BL 441
-				this._writer.WriteBitLong(mtext.BackgroundTransparency.Value);
+				//The alpha encoding, not the percentage. Writing the percentage put a number
+				//AutoCAD reads as a near-opaque alpha into the field, so a drawing round-tripped
+				//through here came back with a different background than it went in with.
+				//Mirrors the reader, which decodes with Transparency.FromAlphaValue.
+				this._writer.WriteBitLong(Transparency.ToAlphaValue(mtext.BackgroundTransparency));
 			}
 		}
 

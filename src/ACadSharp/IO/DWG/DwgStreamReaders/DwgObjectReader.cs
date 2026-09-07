@@ -4039,25 +4039,16 @@ namespace ACadSharp.IO.DWG
 					mtext.BackgroundScale = this._objectReader.ReadBitDouble();
 					//Background color CMC 63
 					mtext.BackgroundColor = this._mergedReaders.ReadCmColor();
-					//Background transparency BL 441
-					//The field is a raw 32 bit value, not the 0-90 percentage the model holds:
-					//AutoCAD writes 843012 for one MTEXT of a real drawing, which cast to a short
-					//is -8956 and cost the whole entity. What cannot be represented is dropped -
-					//the text is worth more than a background transparency AutoCAD does not
-					//implement anyway. The DXF reader already keeps such an MTEXT.
+					//An alpha value, not the 0-90 percentage the model holds: the low byte is the alpha and
+					//0x02 in the top byte marks "by value", the same encoding every other transparency in
+					//this format uses. Read as a percentage, AutoCAD's own numbers looked like nonsense -
+					//843012 for one MTEXT of a real drawing - and the value was thrown away with a warning.
+					//Measured over a folder of workshop drawings: about 2,500 dropped, 705 distinct values
+					//in one file, while AutoCAD's own DXF export of that same drawing decodes cleanly to
+					//100, 76, 51 and the like. Transparency.FromAlphaValue is what the DXF reader and the
+					//entity colour path in this very file already use.
 					int backgroundTransparency = this._objectReader.ReadBitLong();
-					if (backgroundTransparency == -1
-						|| backgroundTransparency == 100
-						|| (backgroundTransparency >= 0 && backgroundTransparency <= 90))
-					{
-						mtext.BackgroundTransparency = new Transparency((short)backgroundTransparency);
-					}
-					else
-					{
-						this._builder.Notify(
-							$"MText with handle {mtext.Handle} carries a background transparency of {backgroundTransparency}, which the model cannot represent; the value is dropped and the entity kept",
-							NotificationType.Warning);
-					}
+					mtext.BackgroundTransparency = Transparency.FromAlphaValue(backgroundTransparency);
 				}
 			}
 
