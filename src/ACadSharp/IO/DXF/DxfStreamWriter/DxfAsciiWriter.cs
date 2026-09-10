@@ -100,6 +100,12 @@ internal class DxfAsciiWriter : DxfStreamWriterBase
 			case GroupCodeValueType.ExtendedDataChunk:
 				const int maxChunkLength = 127;
 				byte[] arr = value as byte[];
+				if (arr.Length == 0)
+				{
+					this._stream.WriteLine(string.Empty);
+					return;
+				}
+
 				MemoryStream ms = new MemoryStream(arr);
 				List<string> lines = new List<string>();
 

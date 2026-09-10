@@ -4,6 +4,7 @@ using ACadSharp.IO;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Xunit;
 
 public class HugeMemoryStreamTests
@@ -15,7 +16,7 @@ public class HugeMemoryStreamTests
 		byte[] buffer = new byte[8];
 
 		Assert.Equal(3, stream.Read(buffer, 0, buffer.Length));
-		Assert.Equal(new byte[] { 1, 2, 3 }, buffer[..3]);
+		Assert.Equal(new byte[] { 1, 2, 3 }, buffer.Take(3));
 		Assert.Equal(0, stream.Read(buffer, 0, buffer.Length));
 		Assert.Equal(-1, stream.ReadByte());
 	}

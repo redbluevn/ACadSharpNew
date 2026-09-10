@@ -32,7 +32,7 @@ namespace ACadSharp.Tests.IO.DWG
 		{
 			List<string> messages = write(version, out CadDocument reopened);
 
-			Assert.DoesNotContain(messages, m => m.Contains("MultiLeader", System.StringComparison.Ordinal));
+			Assert.DoesNotContain(messages, m => m.IndexOf("MultiLeader", System.StringComparison.Ordinal) >= 0);
 			MultiLeader reopenedLeader = Assert.Single(reopened.ModelSpace.Entities.OfType<MultiLeader>());
 			Assert.Equal("note", reopenedLeader.ContextData.TextLabel);
 			MultiLeaderObjectContextData.LeaderRoot root =
@@ -59,7 +59,7 @@ namespace ACadSharp.Tests.IO.DWG
 		{
 			List<string> messages = write(version, out CadDocument reopened);
 
-			Assert.DoesNotContain(messages, m => m.Contains("TableEntity", System.StringComparison.Ordinal));
+			Assert.DoesNotContain(messages, m => m.IndexOf("TableEntity", System.StringComparison.Ordinal) >= 0);
 			Assert.Single(reopened.ModelSpace.Entities.OfType<TableEntity>());
 		}
 
@@ -135,9 +135,9 @@ namespace ACadSharp.Tests.IO.DWG
 			List<string> messages = write(ACadVersion.AC1021, out _);
 
 			Assert.Contains(messages, m =>
-				m.Contains("TableEntity", System.StringComparison.Ordinal) &&
-				m.Contains(ACadVersion.AC1021.ToString(), System.StringComparison.Ordinal) &&
-				m.Contains(ACadVersion.AC1015.ToString(), System.StringComparison.Ordinal));
+				m.IndexOf("TableEntity", System.StringComparison.Ordinal) >= 0 &&
+				m.IndexOf(ACadVersion.AC1021.ToString(), System.StringComparison.Ordinal) >= 0 &&
+				m.IndexOf(ACadVersion.AC1015.ToString(), System.StringComparison.Ordinal) >= 0);
 		}
 
 		[Fact]
@@ -145,7 +145,7 @@ namespace ACadSharp.Tests.IO.DWG
 		{
 			List<string> messages = write(ACadVersion.AC1024, out CadDocument reopened);
 
-			Assert.DoesNotContain(messages, m => m.Contains("oldest version", System.StringComparison.Ordinal));
+			Assert.DoesNotContain(messages, m => m.IndexOf("oldest version", System.StringComparison.Ordinal) >= 0);
 			Assert.Single(reopened.ModelSpace.Entities.OfType<MultiLeader>());
 			Assert.Single(reopened.ModelSpace.Entities.OfType<TableEntity>());
 		}

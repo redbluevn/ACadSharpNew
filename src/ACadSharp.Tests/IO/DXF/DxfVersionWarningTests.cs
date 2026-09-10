@@ -23,7 +23,7 @@ namespace ACadSharp.Tests.IO.DXF
 		{
 			List<string> messages = write(version);
 
-			Assert.Contains(messages, m => m.Contains("not accepted by AutoCAD", System.StringComparison.OrdinalIgnoreCase));
+			Assert.Contains(messages, m => m.IndexOf("not accepted by AutoCAD", System.StringComparison.OrdinalIgnoreCase) >= 0);
 		}
 
 		[Theory]
@@ -34,7 +34,7 @@ namespace ACadSharp.Tests.IO.DXF
 		{
 			List<string> messages = write(version);
 
-			Assert.DoesNotContain(messages, m => m.Contains("not accepted by AutoCAD", System.StringComparison.OrdinalIgnoreCase));
+			Assert.DoesNotContain(messages, m => m.IndexOf("not accepted by AutoCAD", System.StringComparison.OrdinalIgnoreCase) >= 0);
 		}
 
 		private static List<string> write(ACadVersion version)

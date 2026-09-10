@@ -80,9 +80,23 @@ namespace ACadSharp.IO.DXF
 					return;
 				case GroupCodeValueType.Chunk:
 				case GroupCodeValueType.ExtendedDataChunk:
+					const int maxChunkLength = 127;
 					byte[] arr = value as byte[];
-					this._stream.Write((byte)arr.Length);
-					this._stream.Write(arr);
+					int offset = 0;
+					// Each chunk has its own group code and one-byte length. Casting the whole
+					// payload length to byte corrupts the boundary of the following group.
+					do
+					{
+						int length = Math.Min(maxChunkLength, arr.Length - offset);
+						this._stream.Write((byte)length);
+						this._stream.Write(arr, offset, length);
+						offset += length;
+						if (offset < arr.Length)
+						{
+							this.writeDxfCode(code);
+						}
+					}
+					while (offset < arr.Length);
 					return;
 			}
 
