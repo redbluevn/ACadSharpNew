@@ -138,6 +138,31 @@ public class DxfBinaryChunkTests
 		Assert.Equal("after the binary data", actualData.Records.OfType<ExtendedDataString>().Single().Value);
 	}
 
+	[Fact]
+	public void AsciiChunksKeepExactBoundariesAcrossSuccessivePayloads()
+	{
+		using MemoryStream stream = new();
+		using (DxfAsciiWriter writer = new(new StreamWriter(stream, Encoding.ASCII, 1024, true)))
+		{
+			writer.Write(310, Enumerable.Repeat((byte)0xAB, 254).ToArray());
+			writer.Write(1004, new byte[] { 0x01, 0xEF });
+			writer.Write(310, Array.Empty<byte>());
+			writer.Write(310, new byte[] { 0x90 });
+			writer.Write(0, "EOF");
+			writer.Flush();
+		}
+
+		stream.Position = 0;
+		using StreamReader reader = new(stream, Encoding.ASCII);
+		string fullChunk = string.Concat(Enumerable.Repeat("AB", 127));
+		// A short or empty value after a full buffer must not retain the preceding payload's tail.
+		foreach (string expected in new[] { "310", fullChunk, "310", fullChunk, "1004", "01EF", "310", "", "310", "90", "  0", "EOF" })
+		{
+			Assert.Equal(expected, reader.ReadLine());
+		}
+		Assert.Null(reader.ReadLine());
+	}
+
 	private static byte[] createPayload(int length)
 	{
 		return Enumerable.Range(0, length).Select(i => (byte)(i % 256)).ToArray();

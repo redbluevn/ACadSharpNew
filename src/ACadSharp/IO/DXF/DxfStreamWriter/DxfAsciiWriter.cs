@@ -1,7 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 
 namespace ACadSharp.IO.DXF.DxfStreamWriter;
 
@@ -10,6 +8,7 @@ internal class DxfAsciiWriter : DxfStreamWriterBase
 	public int? DecimalPrecision { get; set; } = null;
 
 	private TextWriter _stream;
+	private char[] _chunkBuffer;
 
 	public DxfAsciiWriter(StreamWriter stream)
 	{
@@ -106,30 +105,23 @@ internal class DxfAsciiWriter : DxfStreamWriterBase
 					return;
 				}
 
-				MemoryStream ms = new MemoryStream(arr);
-				List<string> lines = new List<string>();
-
-				int nlines = arr.Length / maxChunkLength;
-				byte[] array = new byte[maxChunkLength];
-				for (int i = 0; i < nlines; i++)
+				const string hex = "0123456789ABCDEF";
+				// Reuse one line of scratch space, including across separate chunk groups.
+				// Large payloads must not buffer their entire hexadecimal representation.
+				char[] buffer = this._chunkBuffer ??= new char[maxChunkLength * 2];
+				for (int offset = 0; offset < arr.Length;)
 				{
-					ms.Read(array, 0, maxChunkLength);
-					lines.Add(new string(array.SelectMany(b => string.Format("{0:X2}", b)).ToArray()));
-				}
-
-				int surp = arr.Length % maxChunkLength;
-				if (surp != 0)
-				{
-					byte[] array2 = new byte[surp];
-					ms.Read(array2, 0, surp);
-					lines.Add(new string(array2.SelectMany(b => string.Format("{0:X2}", b)).ToArray()));
-				}
-
-				this._stream.WriteLine(lines.First());
-				foreach (string l in lines.Skip(1))
-				{
-					this._stream.WriteLine(code);
-					this._stream.WriteLine(l);
+					int length = Math.Min(maxChunkLength, arr.Length - offset);
+					for (int i = 0; i < length; i++)
+					{
+						byte b = arr[offset + i];
+						buffer[i * 2] = hex[b >> 4];
+						buffer[i * 2 + 1] = hex[b & 0xF];
+					}
+					if (offset != 0)
+						this._stream.WriteLine(code);
+					this._stream.WriteLine(buffer, 0, length * 2);
+					offset += length;
 				}
 				return;
 		}
