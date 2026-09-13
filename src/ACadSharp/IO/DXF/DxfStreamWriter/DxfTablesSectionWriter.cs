@@ -228,6 +228,13 @@ namespace ACadSharp.IO.DXF
 			this._writer.WriteHandle(343, style.DimArrow1, map);
 			this._writer.WriteHandle(344, style.DimArrow2, map);
 
+			// DIMLTYPE, DIMLTEX1 and DIMLTEX2. The three properties carry these codes and the
+			// DXF reader picks them up from the map, but this hand-written table writer stopped
+			// at 344, so a dimension style's linetypes reached DWG and were dropped by DXF.
+			this._writer.WriteHandle(345, style.LineType, map);
+			this._writer.WriteHandle(346, style.LineTypeExt1, map);
+			this._writer.WriteHandle(347, style.LineTypeExt2, map);
+
 			this._writer.Write(371, style.DimensionLineWeight);
 			this._writer.Write(372, style.ExtensionLineWeight);
 		}
