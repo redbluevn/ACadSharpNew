@@ -1,4 +1,4 @@
-﻿using ACadSharp.Attributes;
+using ACadSharp.Attributes;
 using CSUtilities.Extensions;
 using System;
 using System.Collections;
@@ -181,6 +181,16 @@ public abstract class Table<T> : CadObject, ITable, ICadCollection<T>, IObservab
 		this._referenceHandler.RemoveReference(name, owner);
 	}
 
+	internal void RemoveReference(CadObject owner, Action<T> assignment)
+	{
+		this._referenceHandler.RemoveReference(owner, assignment);
+	}
+
+	internal void RemoveReference(CadObject owner, Action<CadObject, T> assignment)
+	{
+		this._referenceHandler.RemoveReference(owner, assignment);
+	}
+
 	internal T UpdateReference(CadObject owner, T entry, Action<T> assignValue)
 	{
 		if (owner == null)
@@ -205,9 +215,40 @@ public abstract class Table<T> : CadObject, ITable, ICadCollection<T>, IObservab
 
 		var existing = this.TryAdd(entry);
 
-		this.RemoveReference(existing.Name, owner);
 		this._referenceHandler.AddReference(existing.Name, owner, assignValue);
 		assignValue(existing);
+
+		return existing;
+	}
+
+	//Same as above with an assignment that takes the owner, so the caller can pass a static
+	//delegate; see CadObjectReferenceHandler.AddReference.
+	internal T UpdateReference(CadObject owner, T entry, Action<CadObject, T> assignValue)
+	{
+		if (owner == null)
+		{
+			throw new ArgumentNullException(nameof(owner), "The reference cannot be null.");
+		}
+
+		if (entry == null)
+		{
+			throw new ArgumentNullException(nameof(entry));
+		}
+
+		if (assignValue == null)
+		{
+			throw new ArgumentNullException(nameof(assignValue));
+		}
+
+		if (owner.Document != this.Document)
+		{
+			throw new ArgumentException("The reference must belong to the same document as the table.", nameof(owner));
+		}
+
+		var existing = this.TryAdd(entry);
+
+		this._referenceHandler.AddReference(existing.Name, owner, assignValue);
+		assignValue(owner, existing);
 
 		return existing;
 	}

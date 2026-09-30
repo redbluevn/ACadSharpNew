@@ -8,11 +8,13 @@ internal class DxfAsciiWriter : DxfStreamWriterBase
 	public int? DecimalPrecision { get; set; } = null;
 
 	private TextWriter _stream;
+	private readonly System.Text.Encoding _encoding;
 	private char[] _chunkBuffer;
 
 	public DxfAsciiWriter(StreamWriter stream)
 	{
 		this._stream = stream;
+		this._encoding = stream.Encoding;
 	}
 
 	public override void Close()
@@ -57,7 +59,9 @@ internal class DxfAsciiWriter : DxfStreamWriterBase
 			case GroupCodeValueType.String:
 			case GroupCodeValueType.Comment:
 			case GroupCodeValueType.ExtendedDataString:
-				this._stream.WriteLine(value.ToString());
+				this._stream.WriteLine(this._encoding.CodePage == 65001
+					? value.ToString()
+					: CadUtils.EscapeUnsupportedCharacters(value.ToString(), this._encoding));
 				return;
 			case GroupCodeValueType.Point3D:
 			case GroupCodeValueType.Double:

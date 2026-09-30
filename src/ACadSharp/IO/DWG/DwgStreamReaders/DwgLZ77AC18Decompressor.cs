@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.IO;
 
 namespace ACadSharp.IO.DWG;
@@ -18,9 +19,25 @@ internal static class DwgLZ77AC18Decompressor
 		return memoryStream;
 	}
 
+	//The scratch buffer is rented: it used to start at 128 bytes on every page and be replaced by a
+	//new array of exactly the requested size whenever a copy needed more, so one page could allocate
+	//dozens of growing arrays - the largest byte[] site when reading a 17 MB drawing. Only its first
+	//'count' bytes are ever used, so a larger rented array changes nothing.
 	public static void DecompressToDest(Stream src, Stream dst)
 	{
-		var tempBuf = new byte[128];
+		byte[] tempBuf = ArrayPool<byte>.Shared.Rent(0x8000);
+		try
+		{
+			decompressToDest(src, dst, ref tempBuf);
+		}
+		finally
+		{
+			ArrayPool<byte>.Shared.Return(tempBuf);
+		}
+	}
+
+	private static void decompressToDest(Stream src, Stream dst, ref byte[] tempBuf)
+	{
 		int opcode1 = (byte)src.ReadByte();
 
 		if (opcode1 > 0x11)
@@ -67,10 +84,10 @@ internal static class DwgLZ77AC18Decompressor
 			long position = dst.Position;
 			if (tempBuf.Length < compressedBytes)
 			{
-				tempBuf = new byte[compressedBytes];
+				grow(ref tempBuf, compressedBytes);
 			}
 			dst.Position = position - compOffset;
-			_ = dst.Read(tempBuf, 0, Math.Min(compressedBytes, compOffset));
+			readExactly(dst, tempBuf, Math.Min(compressedBytes, compOffset));
 			dst.Position = position;
 			while (compressedBytes > 0)
 			{
@@ -102,13 +119,31 @@ internal static class DwgLZ77AC18Decompressor
 	{
 		if (tempBuf.Length < count)
 		{
-			tempBuf = new byte[count];
+			grow(ref tempBuf, count);
 		}
 
-		_ = src.Read(tempBuf, 0, count);
+		readExactly(src, tempBuf, count);
 		dst.Write(tempBuf, 0, count);
 
 		return (byte)src.ReadByte();
+	}
+
+	private static void readExactly(Stream stream, byte[] buffer, int count)
+	{
+		int offset = 0;
+		while (offset < count)
+		{
+			int read = stream.Read(buffer, offset, count - offset);
+			if (read == 0) throw new EndOfStreamException("Incomplete DWG compressed data.");
+			offset += read;
+		}
+	}
+
+	private static void grow(ref byte[] tempBuf, int count)
+	{
+		byte[] larger = ArrayPool<byte>.Shared.Rent(count);
+		ArrayPool<byte>.Shared.Return(tempBuf);
+		tempBuf = larger;
 	}
 
 	private static int literalCount(int code, Stream src)

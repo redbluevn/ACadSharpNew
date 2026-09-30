@@ -79,6 +79,17 @@ internal static class CadUtils
 		/// </summary>
 		public static string UnescapeUnicodeCharacters(string value)
 		{
+			return UnescapeUnicodeCharacters(value, true);
+		}
+
+		/// <summary>
+		/// Decodes Unicode escapes and optionally decodes legacy code-page escapes.
+		/// </summary>
+		/// <param name="value">The text containing CAD character escapes.</param>
+		/// <param name="decodeCodePageCharacters">Whether to decode legacy <c>\M+N####</c> escapes.</param>
+		/// <returns>The decoded text, preserving unrecognized escapes.</returns>
+		public static string UnescapeUnicodeCharacters(string value, bool decodeCodePageCharacters)
+		{
 			if (string.IsNullOrEmpty(value))
 			{
 				return value;
@@ -95,7 +106,7 @@ internal static class CadUtils
 			//contents with them and moving the layer's entities elsewhere - 31 in-scope losses on
 			//one drawing. AutoCAD's own DXF of the same file has all 51 layers and not one escape
 			//left in a name.
-			value = unescapeCodePageCharacters(value);
+			if (decodeCodePageCharacters) value = unescapeCodePageCharacters(value);
 
 			if (value.IndexOf("\\U+", System.StringComparison.Ordinal) < 0)
 			{

@@ -24,7 +24,7 @@ namespace ACadSharp.IO.DXF
 		{
 			get
 			{
-				return this.Value.ToString()
+				return CadUtils.UnescapeUnicodeCharacters(this.Value.ToString(), false)
 					.Replace("^J", "\n")
 					.Replace("^M", "\r")
 					.Replace("^I", "\t")

@@ -340,7 +340,7 @@ public abstract class Polyline<T> : Entity, IPolyline
 
 		if (this.MatchVerticesEntityProperties)
 		{
-			entity.MatchProperties(this);
+			entity.matchOwnerProperties(this);
 		}
 	}
 }

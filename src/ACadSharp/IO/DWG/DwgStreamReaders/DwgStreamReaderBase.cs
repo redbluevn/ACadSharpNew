@@ -485,7 +485,7 @@ namespace ACadSharp.IO.DWG
 			{
 				case 0:
 					//00 : A short (2 bytes) follows, little-endian order (LSB first)
-					value = this.ReadShort<LittleEndianConverter>();
+					value = LittleEndianConverter.Instance.ToInt16(this.readScratch(this._scratch2));
 					break;
 				case 1:
 					//01 : An unsigned char (1 byte) follows
@@ -525,7 +525,7 @@ namespace ACadSharp.IO.DWG
 			{
 				case 0:
 					//00 : A long (4 bytes) follows, little-endian order (LSB first)
-					value = this.ReadInt<LittleEndianConverter>();
+					value = LittleEndianConverter.Instance.ToInt32(this.readScratch(this._scratch4));
 					break;
 				case 1:
 					//01 : An unsigned char (1 byte) follows
@@ -570,7 +570,7 @@ namespace ACadSharp.IO.DWG
 			switch (this.Read2Bits())
 			{
 				case 0:
-					value = this.ReadDouble<LittleEndianConverter>();
+					value = LittleEndianConverter.Instance.ToDouble(this.readScratch(this._scratch8));
 					break;
 				case 1:
 					value = 1.0;
@@ -606,13 +606,13 @@ namespace ACadSharp.IO.DWG
 		/// <inheritdoc/>
 		public long ReadRawLong()
 		{
-			return this.ReadInt<LittleEndianConverter>();
+			return LittleEndianConverter.Instance.ToInt32(this.readScratch(this._scratch4));
 		}
 
 		/// <inheritdoc/>
 		public ulong ReadRawULong()
 		{
-			return this.ReadULong<LittleEndianConverter>();
+			return LittleEndianConverter.Instance.ToUInt64(this.readScratch(this._scratch8));
 		}
 
 		/// <inheritdoc/>
@@ -1204,6 +1204,22 @@ namespace ACadSharp.IO.DWG
 		protected DwgException throwException([CallerMemberName] string callerName = null)
 		{
 			return new DwgException($"Failed to read {callerName}");
+		}
+
+		//StreamIO.ReadShort/ReadInt/ReadDouble<T> construct a new converter (which itself builds a
+		//second converter) and a new byte array on every call. These five bit-level reads carry
+		//every coordinate, flag and count of the object section, so a 50,000-entity drawing paid
+		//for millions of them. The bytes now land in exact-size buffers owned by this reader and
+		//are decoded by the shared little-endian converter; the bits read and the values produced
+		//are unchanged, and exact sizes keep a byte-reversing big-endian converter correct too.
+		private readonly byte[] _scratch2 = new byte[2];
+		private readonly byte[] _scratch4 = new byte[4];
+		private readonly byte[] _scratch8 = new byte[8];
+
+		private byte[] readScratch(byte[] buffer)
+		{
+			this.applyShiftToArr(buffer.Length, buffer);
+			return buffer;
 		}
 
 		private void applyShiftToArr(int length, byte[] arr)

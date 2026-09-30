@@ -1,4 +1,4 @@
-﻿using ACadSharp.Attributes;
+using ACadSharp.Attributes;
 using ACadSharp.Extensions;
 using ACadSharp.IO;
 using ACadSharp.Objects;
@@ -303,8 +303,13 @@ public abstract class CadObject : IHandledCadObject
 	protected T updateCollectionEntry<T>(T entry, Action<T> assignValue, ObjectDictionaryCollection<T> collection)
 		where T : NonGraphicalObject
 	{
-		if (collection == null || entry == null)
+		if (collection == null)
 		{
+			return entry;
+		}
+		if (entry == null)
+		{
+			collection.RemoveReference(this, assignValue);
 			return entry;
 		}
 
@@ -314,8 +319,61 @@ public abstract class CadObject : IHandledCadObject
 	protected T updateTableEntry<T>(T entry, Action<T> assignValue, Table<T> table)
 		where T : TableEntry
 	{
-		if (table == null || entry == null)
+		if (table == null)
 		{
+			return entry;
+		}
+		if (entry == null)
+		{
+			table.RemoveReference(this, assignValue);
+			return entry;
+		}
+
+		return table.UpdateReference(this, entry, assignValue);
+	}
+
+	/// <summary>
+	/// Resolves a dictionary entry using an assignment delegate that receives its owner.
+	/// </summary>
+	/// <typeparam name="T">The non-graphical entry type.</typeparam>
+	/// <param name="entry">The entry to resolve.</param>
+	/// <param name="assignValue">The assignment to apply to this owner.</param>
+	/// <param name="collection">The owning document's dictionary collection.</param>
+	/// <returns>The collection's entry, or the supplied entry when no collection is available.</returns>
+	protected T updateCollectionEntry<T>(T entry, Action<CadObject, T> assignValue, ObjectDictionaryCollection<T> collection)
+		where T : NonGraphicalObject
+	{
+		if (collection == null)
+		{
+			return entry;
+		}
+		if (entry == null)
+		{
+			collection.RemoveReference(this, assignValue);
+			return entry;
+		}
+
+		return collection.UpdateReference(this, entry, assignValue);
+	}
+
+	/// <summary>
+	/// Resolves a table entry using an assignment delegate that receives its owner.
+	/// </summary>
+	/// <typeparam name="T">The table entry type.</typeparam>
+	/// <param name="entry">The entry to resolve.</param>
+	/// <param name="assignValue">The assignment to apply to this owner.</param>
+	/// <param name="table">The owning document's table.</param>
+	/// <returns>The table's entry, or the supplied entry when no table is available.</returns>
+	protected T updateTableEntry<T>(T entry, Action<CadObject, T> assignValue, Table<T> table)
+		where T : TableEntry
+	{
+		if (table == null)
+		{
+			return entry;
+		}
+		if (entry == null)
+		{
+			table.RemoveReference(this, assignValue);
 			return entry;
 		}
 

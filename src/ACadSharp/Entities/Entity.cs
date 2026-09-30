@@ -24,7 +24,7 @@ public abstract class Entity : CadObject, IEntity
 		get { return this._bookColor; }
 		set
 		{
-			this._bookColor = this.updateCollectionEntry(value, c => this._bookColor = c, this.Document?.Colors);
+			this._bookColor = this.updateCollectionEntry(value, s_assignBookColor, this.Document?.Colors);
 		}
 	}
 
@@ -48,7 +48,7 @@ public abstract class Entity : CadObject, IEntity
 				throw new ArgumentNullException(nameof(value));
 			}
 
-			this._layer = updateTableEntry(value, l => this._layer = l, this.Document?.Layers);
+			this._layer = updateTableEntry(value, s_assignLayer, this.Document?.Layers);
 		}
 	}
 
@@ -64,7 +64,7 @@ public abstract class Entity : CadObject, IEntity
 				throw new ArgumentNullException(nameof(value));
 			}
 
-			this._lineType = updateTableEntry(value, l => this._lineType = l, this.Document?.LineTypes);
+			this._lineType = updateTableEntry(value, s_assignLineType, this.Document?.LineTypes);
 		}
 	}
 
@@ -83,7 +83,7 @@ public abstract class Entity : CadObject, IEntity
 		get { return this._material; }
 		set
 		{
-			this._material = this.updateCollectionEntry(value, m => this._material = m, this.Document?.Materials);
+			this._material = this.updateCollectionEntry(value, s_assignMaterial, this.Document?.Materials);
 		}
 	}
 
@@ -117,6 +117,16 @@ public abstract class Entity : CadObject, IEntity
 	private LineType _lineType;
 
 	private Material _material = null;
+
+	//Static so that assigning a layer, linetype, material or book colour builds no closure; see
+	//CadObjectReferenceHandler.AddReference.
+	private static readonly Action<CadObject, Layer> s_assignLayer = static (owner, layer) => ((Entity)owner)._layer = layer;
+
+	private static readonly Action<CadObject, LineType> s_assignLineType = static (owner, lineType) => ((Entity)owner)._lineType = lineType;
+
+	private static readonly Action<CadObject, Material> s_assignMaterial = static (owner, material) => ((Entity)owner)._material = material;
+
+	private static readonly Action<CadObject, BookColor> s_assignBookColor = static (owner, color) => ((Entity)owner)._bookColor = color;
 
 	/// <inheritdoc/>
 	public Entity() : base() { }
@@ -270,7 +280,33 @@ public abstract class Entity : CadObject, IEntity
 		this.Transparency = entity.Transparency;
 	}
 
-	private T resolveDefault<T>(T current, Table<T> table, string defaultName, Action<T> assign, Func<T> build)
+	//A vertex, or any entity added to an owner's own collection, joins the owner's document, so it
+	//can hold the owner's table entries directly. MatchProperties clones them whenever the two
+	//documents differ - right for an entity headed for ANOTHER document, where a shared entry
+	//would end up owned by two tables - but a vertex being added to a polyline that is already in a
+	//document always differs (it has no document yet), so every vertex cloned the layer, linetype
+	//and material together with their extension dictionaries and XRecords, only for the document
+	//to swap each clone for the entry of the same name when the vertex arrived. On a customer
+	//drawing whose layers carry large XRecord dictionaries that was ~1.6 GB per read.
+	internal void matchOwnerProperties(Entity owner)
+	{
+		if (owner.Document is null)
+		{
+			this.MatchProperties(owner);
+			return;
+		}
+
+		this.Layer = owner.Layer;
+		this.LineType = owner.LineType;
+		this.Material = owner.Material;
+		this.Color = owner.Color;
+		this.LineWeight = owner.LineWeight;
+		this.LineTypeScale = owner.LineTypeScale;
+		this.IsInvisible = owner.IsInvisible;
+		this.Transparency = owner.Transparency;
+	}
+
+	private T resolveDefault<T>(T current, Table<T> table, string defaultName, Action<CadObject, T> assign, Func<T> build)
 		where T : TableEntry
 	{
 		//An entity that never had a layer assigned would otherwise build its default here only to
@@ -290,14 +326,14 @@ public abstract class Entity : CadObject, IEntity
 	{
 		base.AssignDocument(doc);
 
-		this._bookColor = this.updateCollectionEntry(this._bookColor, c => this._bookColor = c, doc.Colors);
-		this._material = this.updateCollectionEntry(this._material, m => this._material = m, doc.Materials);
+		this._bookColor = this.updateCollectionEntry(this._bookColor, s_assignBookColor, doc.Colors);
+		this._material = this.updateCollectionEntry(this._material, s_assignMaterial, doc.Materials);
 
 		//Through resolveDefault rather than updateTableEntry directly: the fields start null (see
 		//their declaration) and upstream's helper returns a null entry untouched, which would leave
 		//the entity holding a default the document's table never saw.
-		this._layer = this.resolveDefault(this._layer, doc.Layers, Layer.DefaultName, l => this._layer = l, static () => Layer.Default);
-		this._lineType = this.resolveDefault(this._lineType, doc.LineTypes, LineType.ByLayerName, l => this._lineType = l, static () => LineType.ByLayer);
+		this._layer = this.resolveDefault(this._layer, doc.Layers, Layer.DefaultName, s_assignLayer, static () => Layer.Default);
+		this._lineType = this.resolveDefault(this._lineType, doc.LineTypes, LineType.ByLayerName, s_assignLineType, static () => LineType.ByLayer);
 	}
 
 	internal override void UnassignDocument()
