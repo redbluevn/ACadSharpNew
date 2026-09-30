@@ -1,4 +1,4 @@
-﻿using ACadSharp.Header;
+using ACadSharp.Header;
 using CSUtilities.IO;
 using CSUtilities.Converters;
 using CSUtilities.Text;
@@ -163,6 +163,8 @@ public class DwgReader : CadReaderBase<DwgReaderConfiguration>
 
 		this._document.Header = this.ReadHeader();
 		this._document.Header.Document = this._document;
+
+		this.readTemplate();
 
 		this.readClasses();
 
@@ -946,10 +948,31 @@ public class DwgReader : CadReaderBase<DwgReaderConfiguration>
 	private void readTemplate()
 	{
 		this._fileHeader = this._fileHeader ?? this.readFileHeader();
+		if (this._fileHeader.AcadVersion < ACadVersion.AC1018)
+			return;
 
-		IDwgStreamReader sreader = this.getSectionStream(DwgSectionDefinition.Template);
+		var header = (DwgFileHeaderAC18)this._fileHeader;
+		if (!header.Descriptors.TryGetValue(DwgSectionDefinition.Template, out var descriptor))
+			return;
+		IDwgStreamReader reader = this.getSectionStream(DwgSectionDefinition.Template);
+		if (reader == null)
+			return;
+		var measurement = readTemplateMeasurement(reader, (long)Math.Min(descriptor.CompressedSize, (ulong)reader.Stream.Length));
+		if (measurement.HasValue)
+			this._document.Header.MeasurementUnits = measurement.Value;
+	}
 
-		throw new NotImplementedException();
+	internal static MeasurementUnits? readTemplateMeasurement(IDwgStreamReader reader, long length)
+	{
+		if (length < 4)
+			return null;
+		short descriptionLength = reader.ReadShort();
+		if (descriptionLength < 0 || length < 4L + descriptionLength)
+			return null;
+		if (descriptionLength > 0)
+			reader.ReadBytes(descriptionLength);
+		short measurement = reader.ReadShort();
+		return measurement == 0 || measurement == 1 ? (MeasurementUnits?)measurement : null;
 	}
 
 	#region File Header reading methods
@@ -1195,6 +1218,9 @@ public class DwgReader : CadReaderBase<DwgReaderConfiguration>
 			//0x20	64	Section Name(string)
 			descriptor.Name = decompressedStream.ReadString(64).Split('\0')[0];
 
+			if (descriptor.DecompressedSize == 0)
+				throw new InvalidDataException("Section page size cannot be zero.");
+
 			//Following this, the following (local) section page map data will be present
 			ulong decompressSizeCounter = 0;
 			for (int j = 0; j < descriptor.PageCount; ++j)
@@ -1229,6 +1255,19 @@ public class DwgReader : CadReaderBase<DwgReaderConfiguration>
 
 				descriptor.LocalSections.Add(localmap);
 				decompressSizeCounter += localmap.DecompressedSize;
+			}
+
+			// Restore zero-only trailing pages omitted from the file.
+			while (decompressSizeCounter < descriptor.CompressedSize)
+			{
+				ulong size = Math.Min(descriptor.DecompressedSize, descriptor.CompressedSize - decompressSizeCounter);
+				descriptor.LocalSections.Add(new DwgLocalSectionMap
+				{
+					IsEmpty = true,
+					Offset = decompressSizeCounter,
+					DecompressedSize = size
+				});
+				decompressSizeCounter += size;
 			}
 
 			//Get the final size for the local section

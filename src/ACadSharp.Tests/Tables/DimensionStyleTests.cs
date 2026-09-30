@@ -223,6 +223,24 @@ public class DimensionStyleTests : TableEntryCommonTests<DimensionStyle>
 		};
 	}
 
+	[Theory]
+	[InlineData("C", "D", "C<>D")]
+	[InlineData("", "D", "<>D")]
+	[InlineData("C", "", "C<>")]
+	[InlineData("", "", "")]
+	[InlineData(null, null, "")]
+	public void PrefixAndSuffixReplaceExistingText(string prefix, string suffix, string expected)
+	{
+		var style = new DimensionStyle { PostFix = "A<>B" };
+		style.Prefix = prefix;
+		style.Prefix = prefix;
+		Assert.Equal(prefix ?? "", style.Prefix);
+		Assert.Equal("B", style.Suffix);
+		style.Suffix = suffix;
+		style.Suffix = suffix;
+		Assert.Equal(expected, style.PostFix);
+	}
+
 	[Fact]
 	public void ApplyRoundingTest()
 	{

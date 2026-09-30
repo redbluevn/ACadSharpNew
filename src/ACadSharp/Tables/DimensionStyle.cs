@@ -1,4 +1,4 @@
-﻿using ACadSharp.Attributes;
+using ACadSharp.Attributes;
 using ACadSharp.Types.Units;
 using CSMath;
 using System;
@@ -657,7 +657,8 @@ public class DimensionStyle : TableEntry
 		set
 		{
 			this.getDimStylePrefixAndSuffix(this.PostFix, '<', '>', out _, out string suffix);
-			this.PostFix = $"{value}{this.PostFix}{suffix}";
+			this.PostFix = string.IsNullOrEmpty(value) && string.IsNullOrEmpty(suffix)
+				? string.Empty : $"{value}<>{suffix}";
 		}
 	}
 
@@ -774,7 +775,8 @@ public class DimensionStyle : TableEntry
 		set
 		{
 			this.getDimStylePrefixAndSuffix(this.PostFix, '<', '>', out string prefix, out _);
-			this.PostFix = $"{prefix}{this.PostFix}{value}";
+			this.PostFix = string.IsNullOrEmpty(prefix) && string.IsNullOrEmpty(value)
+				? string.Empty : $"{prefix}<>{value}";
 		}
 	}
 
