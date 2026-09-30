@@ -292,6 +292,8 @@ internal abstract class DxfSectionReaderBase
 				this._reader.ReadNext();
 		}
 
+		(template as CadTextEntityTemplate)?.CompleteDxfMText();
+
 		return template;
 	}
 
@@ -712,7 +714,7 @@ internal abstract class DxfSectionReaderBase
 		switch (this._reader.Code)
 		{
 			case 1 or 3 when tmp.CadObject is MText mtext:
-				mtext.Value += this._reader.ValueAsString;
+				tmp.AppendDxfMText(this._reader.Value.ToString());
 				return true;
 			case 50 when tmp.CadObject is MText mtext://Read only for MText
 				double angle = this._reader.ValueAsAngle;

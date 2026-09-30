@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 using ACadSharp.Attributes;
 
@@ -47,7 +47,7 @@ public abstract class AnnotScaleObjectContextData : ObjectContextData
 
 	internal override void UnassignDocument()
 	{
-		this.Document.Scales.RemoveReference(this.Scale?.Name, this);
+		this.Document.Scales.RemoveReference(this.Scale, this);
 
 		base.UnassignDocument();
 

@@ -167,7 +167,7 @@ public class DimensionStyle : TableEntry
 		get { return this._dimArrowBlock; }
 		set
 		{
-			this._dimArrowBlock = this.updateTableEntry(value, b => this._dimArrowBlock = b, this.Document?.BlockRecords);
+			this._dimArrowBlock = this.updateTableEntry(value, assignDimArrowBlock, this.Document?.BlockRecords);
 		}
 	}
 
@@ -273,7 +273,7 @@ public class DimensionStyle : TableEntry
 		get { return this._dimArrow1; }
 		set
 		{
-			this._dimArrow1 = this.updateTableEntry(value, b => this._dimArrow1 = b, this.Document?.BlockRecords);
+			this._dimArrow1 = this.updateTableEntry(value, assignDimArrow1, this.Document?.BlockRecords);
 		}
 	}
 
@@ -297,7 +297,7 @@ public class DimensionStyle : TableEntry
 		get { return this._dimArrow2; }
 		set
 		{
-			this._dimArrow2 = this.updateTableEntry(value, b => this._dimArrow2 = b, this.Document?.BlockRecords);
+			this._dimArrow2 = this.updateTableEntry(value, assignDimArrow2, this.Document?.BlockRecords);
 		}
 	}
 
@@ -505,7 +505,7 @@ public class DimensionStyle : TableEntry
 		get { return this._leaderArrow; }
 		set
 		{
-			this._leaderArrow = this.updateTableEntry(value, b => this._leaderArrow = b, this.Document?.BlockRecords);
+			this._leaderArrow = this.updateTableEntry(value, assignLeaderArrow, this.Document?.BlockRecords);
 		}
 	}
 
@@ -557,7 +557,7 @@ public class DimensionStyle : TableEntry
 		get { return this._lineType; }
 		set
 		{
-			this._lineType = this.updateTableEntry(value, l => this._lineType = null, this.Document?.LineTypes);
+			this._lineType = this.updateTableEntry(value, assignLineType, this.Document?.LineTypes);
 		}
 	}
 
@@ -570,7 +570,7 @@ public class DimensionStyle : TableEntry
 		get { return this._lineTypeExt1; }
 		set
 		{
-			this._lineTypeExt1 = this.updateTableEntry(value, l => this._lineTypeExt1 = null, this.Document?.LineTypes);
+			this._lineTypeExt1 = this.updateTableEntry(value, assignLineTypeExt1, this.Document?.LineTypes);
 		}
 	}
 
@@ -583,7 +583,7 @@ public class DimensionStyle : TableEntry
 		get { return this._lineTypeExt2; }
 		set
 		{
-			this._lineTypeExt2 = this.updateTableEntry(value, l => this._lineTypeExt2 = null, this.Document?.LineTypes);
+			this._lineTypeExt2 = this.updateTableEntry(value, assignLineTypeExt2, this.Document?.LineTypes);
 		}
 	}
 
@@ -755,7 +755,7 @@ public class DimensionStyle : TableEntry
 				throw new ArgumentNullException(nameof(value));
 			}
 
-			this._style = this.updateTableEntry(value, s => this._style = s, this.Document?.TextStyles);
+			this._style = this.updateTableEntry(value, assignStyle, this.Document?.TextStyles);
 		}
 	}
 
@@ -1162,21 +1162,21 @@ public class DimensionStyle : TableEntry
 	{
 		base.AssignDocument(doc);
 
-		this._style = this.updateTableEntry(this.Style, s => this._style = s, doc.TextStyles);
+		this._style = this.updateTableEntry(this.Style, assignStyle, doc.TextStyles);
 
-		this._lineType = this.updateTableEntry(this.LineType, l => this._lineType = null, doc.LineTypes);
-		this._lineTypeExt1 = this.updateTableEntry(this.LineTypeExt1, l => this._lineTypeExt1 = null, doc.LineTypes);
-		this._lineTypeExt2 = this.updateTableEntry(this.LineTypeExt2, l => this._lineTypeExt2 = null, doc.LineTypes);
+		this._lineType = this.updateTableEntry(this.LineType, assignLineType, doc.LineTypes);
+		this._lineTypeExt1 = this.updateTableEntry(this.LineTypeExt1, assignLineTypeExt1, doc.LineTypes);
+		this._lineTypeExt2 = this.updateTableEntry(this.LineTypeExt2, assignLineTypeExt2, doc.LineTypes);
 
-		this._leaderArrow = this.updateTableEntry(this.LeaderArrow, b => this._leaderArrow = null, doc.BlockRecords);
-		this._dimArrow1 = this.updateTableEntry(this.DimArrow1, b => this._dimArrow1 = null, doc.BlockRecords);
-		this._dimArrow2 = this.updateTableEntry(this.DimArrow2, b => this._dimArrow2 = null, doc.BlockRecords);
-		this._dimArrowBlock = this.updateTableEntry(this.ArrowBlock, b => this._dimArrowBlock = null, doc.BlockRecords);
+		this._leaderArrow = this.updateTableEntry(this.LeaderArrow, assignLeaderArrow, doc.BlockRecords);
+		this._dimArrow1 = this.updateTableEntry(this.DimArrow1, assignDimArrow1, doc.BlockRecords);
+		this._dimArrow2 = this.updateTableEntry(this.DimArrow2, assignDimArrow2, doc.BlockRecords);
+		this._dimArrowBlock = this.updateTableEntry(this.ArrowBlock, assignDimArrowBlock, doc.BlockRecords);
 	}
 
 	internal override void UnassignDocument()
 	{
-		this.Document.DimensionStyles.RemoveReference(this.Style?.Name, this);
+		this.Document.TextStyles.RemoveReference(this.Style?.Name, this);
 		this.Document.LineTypes.RemoveReference(this.LineType?.Name, this);
 		this.Document.LineTypes.RemoveReference(this.LineTypeExt1?.Name, this);
 		this.Document.LineTypes.RemoveReference(this.LineTypeExt2?.Name, this);
@@ -1199,6 +1199,22 @@ public class DimensionStyle : TableEntry
 		this._dimArrow2 = (BlockRecord)(this.DimArrow2?.Clone());
 		this._dimArrowBlock = (BlockRecord)(this.ArrowBlock?.Clone());
 	}
+
+	private static void assignStyle(CadObject owner, TextStyle value) => ((DimensionStyle)owner)._style = value;
+
+	private static void assignLineType(CadObject owner, LineType value) => ((DimensionStyle)owner)._lineType = null;
+
+	private static void assignLineTypeExt1(CadObject owner, LineType value) => ((DimensionStyle)owner)._lineTypeExt1 = null;
+
+	private static void assignLineTypeExt2(CadObject owner, LineType value) => ((DimensionStyle)owner)._lineTypeExt2 = null;
+
+	private static void assignLeaderArrow(CadObject owner, BlockRecord value) => ((DimensionStyle)owner)._leaderArrow = null;
+
+	private static void assignDimArrow1(CadObject owner, BlockRecord value) => ((DimensionStyle)owner)._dimArrow1 = null;
+
+	private static void assignDimArrow2(CadObject owner, BlockRecord value) => ((DimensionStyle)owner)._dimArrow2 = null;
+
+	private static void assignDimArrowBlock(CadObject owner, BlockRecord value) => ((DimensionStyle)owner)._dimArrowBlock = null;
 
 	private string[] getDimStylePrefixAndSuffix(string text, char start, char end, out string prefix, out string suffix)
 	{

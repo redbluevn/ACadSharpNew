@@ -584,62 +584,62 @@ public class CadDocument : IHandledCadObject
 
 		if (this.updateCollection(CadDictionary.AcadLayout, createDictionaries, out CadDictionary layout))
 		{
-			this.Layouts = new LayoutCollection(layout);
+			this.Layouts = ReferenceEquals(this.Layouts?.Dictionary, layout) ? this.Layouts : new LayoutCollection(layout);
 		}
 
 		if (this.updateCollection(CadDictionary.AcadGroup, createDictionaries, out CadDictionary groups))
 		{
-			this.Groups = new GroupCollection(groups);
+			this.Groups = ReferenceEquals(this.Groups?.Dictionary, groups) ? this.Groups : new GroupCollection(groups);
 		}
 
 		if (this.updateCollection(CadDictionary.AcadScaleList, createDictionaries, out CadDictionary scales))
 		{
-			this.Scales = new ScaleCollection(scales);
+			this.Scales = ReferenceEquals(this.Scales?.Dictionary, scales) ? this.Scales : new ScaleCollection(scales);
 			if (createDefaults) { this.Scales.CreateDefaults(); }
 		}
 
 		if (this.updateCollection(CadDictionary.AcadMLineStyle, createDictionaries, out CadDictionary mlineStyles))
 		{
-			this.MLineStyles = new MLineStyleCollection(mlineStyles);
+			this.MLineStyles = ReferenceEquals(this.MLineStyles?.Dictionary, mlineStyles) ? this.MLineStyles : new MLineStyleCollection(mlineStyles);
 			if (createDefaults) { this.MLineStyles.CreateDefaults(); }
 		}
 
 		if (this.updateCollection(CadDictionary.AcadMLeaderStyle, createDictionaries, out CadDictionary mleaderStyles))
 		{
-			this.MLeaderStyles = new MLeaderStyleCollection(mleaderStyles);
+			this.MLeaderStyles = ReferenceEquals(this.MLeaderStyles?.Dictionary, mleaderStyles) ? this.MLeaderStyles : new MLeaderStyleCollection(mleaderStyles);
 			if (createDefaults) { this.MLeaderStyles.CreateDefaults(); }
 		}
 
 		if (this.updateCollection(CadDictionary.AcadTableStyle, createDictionaries, out CadDictionary tableStyles))
 		{
-			this.TableStyles = new TableStyleCollection(tableStyles);
+			this.TableStyles = ReferenceEquals(this.TableStyles?.Dictionary, tableStyles) ? this.TableStyles : new TableStyleCollection(tableStyles);
 			if (createDefaults) { this.TableStyles.CreateDefaults(); }
 		}
 
 		if (this.updateCollection(CadDictionary.AcadImageDict, createDictionaries, out CadDictionary imageDefinitions))
 		{
-			this.ImageDefinitions = new ImageDefinitionCollection(imageDefinitions);
+			this.ImageDefinitions = ReferenceEquals(this.ImageDefinitions?.Dictionary, imageDefinitions) ? this.ImageDefinitions : new ImageDefinitionCollection(imageDefinitions);
 		}
 
 		if (this.updateCollection(CadDictionary.AcadPdfDefinitions, createDictionaries, out CadDictionary pdfDefinitions))
 		{
-			this.PdfDefinitions = new PdfDefinitionCollection(pdfDefinitions);
+			this.PdfDefinitions = ReferenceEquals(this.PdfDefinitions?.Dictionary, pdfDefinitions) ? this.PdfDefinitions : new PdfDefinitionCollection(pdfDefinitions);
 		}
 
 		if (this.updateCollection(CadDictionary.AcadColor, createDictionaries, out CadDictionary colors))
 		{
-			this.Colors = new ColorCollection(colors);
+			this.Colors = ReferenceEquals(this.Colors?.Dictionary, colors) ? this.Colors : new ColorCollection(colors);
 		}
 
 		if (this.updateCollection(CadDictionary.VariableDictionary, createDictionaries, out CadDictionary variables))
 		{
-			this.DictionaryVariables = new DictionaryVariableCollection(variables);
+			this.DictionaryVariables = ReferenceEquals(this.DictionaryVariables?.Dictionary, variables) ? this.DictionaryVariables : new DictionaryVariableCollection(variables);
 			if (createDefaults) { this.DictionaryVariables.CreateDefaults(); }
 		}
 
 		if (this.updateCollection(CadDictionary.AcadMaterial, createDictionaries, out CadDictionary materials))
 		{
-			this.Materials = new MaterialCollection(materials);
+			this.Materials = ReferenceEquals(this.Materials?.Dictionary, materials) ? this.Materials : new MaterialCollection(materials);
 			if (createDefaults) { this.Materials.CreateDefaults(); }
 		}
 	}

@@ -25,7 +25,9 @@ public abstract class ObjectDictionaryCollection<T> : ICadCollection<T>, IObserv
 
 	protected CadDictionary _dictionary;
 
-	private readonly CadObjectReferenceHandler<string, T> _referenceHandler = new();
+	internal CadDictionary Dictionary => this._dictionary;
+
+	private readonly CadObjectReferenceHandler<T, T> _referenceHandler = new();
 
 	/// <summary>
 	/// Initializes a new instance of the ObjectDictionaryCollection class with the specified CAD dictionary.
@@ -55,7 +57,12 @@ public abstract class ObjectDictionaryCollection<T> : ICadCollection<T>, IObserv
 	/// </summary>
 	public void Clear()
 	{
-		this._dictionary.Clear();
+		foreach (var pair in this._dictionary.KeyedEntries.ToArray())
+		{
+			if (!this._dictionary.TryGetEntry(pair.Key, out NonGraphicalObject current) || !ReferenceEquals(current, pair.Value)) continue;
+			if (pair.Value is T) this.Remove(pair.Key);
+			else this._dictionary.Remove(pair.Key);
+		}
 	}
 
 	/// <summary>
@@ -97,7 +104,12 @@ public abstract class ObjectDictionaryCollection<T> : ICadCollection<T>, IObserv
 	/// <returns>An enumerable collection of CAD objects that reference the specified entry.</returns>
 	public IEnumerable<CadObject> GetReferences(string name)
 	{
-		return this._referenceHandler.GetReferences(name);
+		var matches = this.Where(entry => entry.Name == name).ToArray();
+		if (matches.Length > 0)
+		{
+			return matches.SelectMany(entry => this._referenceHandler.GetReferences(entry)).Distinct();
+		}
+		return this.TryGet(name, out T entry) ? this._referenceHandler.GetReferences(entry) : Enumerable.Empty<CadObject>();
 	}
 
 	/// <summary>
@@ -121,7 +133,7 @@ public abstract class ObjectDictionaryCollection<T> : ICadCollection<T>, IObserv
 		if (this._dictionary.Remove(name, out NonGraphicalObject n))
 		{
 			entry = (T)n;
-			this.assignToDefault(entry.Name);
+			this.assignToDefault(entry);
 			return true;
 		}
 		else
@@ -157,14 +169,9 @@ public abstract class ObjectDictionaryCollection<T> : ICadCollection<T>, IObserv
 		return this._dictionary.TryGetEntry(name, out entry);
 	}
 
-	internal void RemoveReference(string name, CadObject owner)
+	internal void RemoveReference(T entry, CadObject owner)
 	{
-		if (string.IsNullOrEmpty(name))
-		{
-			return;
-		}
-
-		this._referenceHandler.RemoveReference(name, owner);
+		if (entry != null) this._referenceHandler.RemoveReference(entry, owner);
 	}
 
 	internal void RemoveReference(CadObject owner, Action<T> assignment)
@@ -201,7 +208,7 @@ public abstract class ObjectDictionaryCollection<T> : ICadCollection<T>, IObserv
 
 		var existing = this.TryAdd(entry);
 
-		this._referenceHandler.AddReference(existing.Name, owner, assignValue);
+		this._referenceHandler.AddReference(existing, owner, assignValue);
 		assignValue(existing);
 
 		return existing;
@@ -233,7 +240,7 @@ public abstract class ObjectDictionaryCollection<T> : ICadCollection<T>, IObserv
 
 		var existing = this.TryAdd(entry);
 
-		this._referenceHandler.AddReference(existing.Name, owner, assignValue);
+		this._referenceHandler.AddReference(existing, owner, assignValue);
 		assignValue(owner, existing);
 
 		return existing;
@@ -244,9 +251,9 @@ public abstract class ObjectDictionaryCollection<T> : ICadCollection<T>, IObserv
 		return null;
 	}
 
-	private void assignToDefault(string name)
+	private void assignToDefault(T entry)
 	{
-		this._referenceHandler.RemoveReference(name, this.getDefaultEntry());
+		this._referenceHandler.RemoveReference(entry, this.getDefaultEntry());
 	}
 
 	public T this[string key] { get { return (T)this._dictionary[key]; } }

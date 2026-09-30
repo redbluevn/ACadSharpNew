@@ -11,6 +11,20 @@ namespace ACadSharp.IO.Templates
 
 		public CadTextEntityTemplate(Entity entity) : base(entity) { }
 
+		private System.Text.StringBuilder _dxfMText;
+
+		internal void AppendDxfMText(string value)
+		{
+			(this._dxfMText ??= new()).Append(value);
+		}
+
+		internal void CompleteDxfMText()
+		{
+			if (this._dxfMText == null) return;
+			((MText)this.CadObject).Value = CadUtils.UnescapeDxfMText(this._dxfMText.ToString());
+			this._dxfMText = null;
+		}
+
 		protected override void build(CadDocumentBuilder builder)
 		{
 			base.build(builder);

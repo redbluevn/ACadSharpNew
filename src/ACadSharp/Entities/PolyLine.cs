@@ -77,7 +77,7 @@ public abstract class Polyline<T> : Entity, IPolyline
 			base.LineType = value;
 			if (this.MatchVerticesEntityProperties)
 			{
-				this.Vertices.ForEach(v => v.Layer = this.Layer);
+				this.Vertices.ForEach(v => v.LineType = this.LineType);
 			}
 		}
 	}

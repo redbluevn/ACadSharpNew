@@ -1,4 +1,4 @@
-﻿using ACadSharp.Attributes;
+using ACadSharp.Attributes;
 using ACadSharp.Entities.ProxyGraphics;
 using ACadSharp.Objects;
 using ACadSharp.Tables;
@@ -338,8 +338,8 @@ public abstract class Entity : CadObject, IEntity
 
 	internal override void UnassignDocument()
 	{
-		this.Document.Colors.RemoveReference(this._bookColor?.Name, this);
-		this.Document.Materials.RemoveReference(this._material?.Name, this);
+		this.Document.Colors.RemoveReference(this._bookColor, this);
+		this.Document.Materials.RemoveReference(this._material, this);
 
 		this.Document.Layers.RemoveReference(this.Layer.Name, this);
 		this.Document.LineTypes.RemoveReference(this.LineType.Name, this);

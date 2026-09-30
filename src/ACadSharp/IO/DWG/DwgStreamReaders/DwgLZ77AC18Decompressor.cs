@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Buffers;
 using System.IO;
 
@@ -38,7 +38,8 @@ internal static class DwgLZ77AC18Decompressor
 
 	private static void decompressToDest(Stream src, Stream dst, ref byte[] tempBuf)
 	{
-		int opcode1 = (byte)src.ReadByte();
+		long outputStart = dst.Position;
+		int opcode1 = readByte(src);
 
 		if (opcode1 > 0x11)
 		{
@@ -47,7 +48,7 @@ internal static class DwgLZ77AC18Decompressor
 
 		if ((opcode1 & 0xF0) == 0)
 		{
-			opcode1 = copy(literalCount(opcode1, src) + 3, src, dst, ref tempBuf);
+			opcode1 = copy(checked(literalCount(opcode1, src) + 3), src, dst, ref tempBuf);
 		}
 
 		//0x11 : Terminates the input stream.
@@ -64,7 +65,7 @@ internal static class DwgLZ77AC18Decompressor
 			{
 				compressedBytes = (opcode1 >> 4) - 1;
 				//Read the next byte(call it opcode2):
-				byte opcode2 = (byte)src.ReadByte();
+				byte opcode2 = readByte(src);
 				compOffset = ((opcode1 >> 2 & 3) | (opcode2 << 2)) + 1;
 			}
 			//0x12 – 0x1F
@@ -82,6 +83,8 @@ internal static class DwgLZ77AC18Decompressor
 			}
 
 			long position = dst.Position;
+			if (compOffset <= 0 || compOffset > position - outputStart || compressedBytes <= 0)
+				throw new InvalidDataException("Invalid DWG back-reference offset or length.");
 			if (tempBuf.Length < compressedBytes)
 			{
 				grow(ref tempBuf, compressedBytes);
@@ -100,10 +103,10 @@ internal static class DwgLZ77AC18Decompressor
 			//0x00 : litCount is read as the next Literal Length (see format below)
 			if (litCount == 0)
 			{
-				opcode1 = (byte)src.ReadByte();
+				opcode1 = readByte(src);
 				if ((opcode1 & 0b11110000) == 0)
 				{
-					litCount = literalCount(opcode1, src) + 3;
+					litCount = checked(literalCount(opcode1, src) + 3);
 				}
 			}
 
@@ -125,7 +128,14 @@ internal static class DwgLZ77AC18Decompressor
 		readExactly(src, tempBuf, count);
 		dst.Write(tempBuf, 0, count);
 
-		return (byte)src.ReadByte();
+		return readByte(src);
+	}
+
+	private static byte readByte(Stream stream)
+	{
+		int value = stream.ReadByte();
+		if (value < 0) throw new EndOfStreamException("Incomplete DWG compressed opcode.");
+		return (byte)value;
 	}
 
 	private static void readExactly(Stream stream, byte[] buffer, int count)
@@ -153,12 +163,12 @@ internal static class DwgLZ77AC18Decompressor
 		if (lowbits == 0)
 		{
 			byte lastByte;
-			for (lastByte = (byte)src.ReadByte(); lastByte == 0; lastByte = (byte)src.ReadByte())
+			for (lastByte = readByte(src); lastByte == 0; lastByte = readByte(src))
 			{
-				lowbits += byte.MaxValue;  //0xFF
+				lowbits = checked(lowbits + byte.MaxValue);  //0xFF
 			}
 
-			lowbits += 0xF + lastByte;
+			lowbits = checked(lowbits + 0xF + lastByte);
 		}
 		return lowbits;
 	}
@@ -171,23 +181,23 @@ internal static class DwgLZ77AC18Decompressor
 		{
 			byte lastByte;
 
-			for (lastByte = (byte)compressed.ReadByte(); lastByte == 0; lastByte = (byte)compressed.ReadByte())
+			for (lastByte = readByte(compressed); lastByte == 0; lastByte = readByte(compressed))
 			{
-				compressedBytes += byte.MaxValue;
+				compressedBytes = checked(compressedBytes + byte.MaxValue);
 			}
 
-			compressedBytes += lastByte + validBits;
+			compressedBytes = checked(compressedBytes + lastByte + validBits);
 		}
 
-		return compressedBytes + 2;
+		return checked(compressedBytes + 2);
 	}
 
 	private static int twoByteOffset(ref int offset, int addedValue, Stream stream)
 	{
-		int firstByte = stream.ReadByte();
+		int firstByte = readByte(stream);
 
 		offset |= firstByte >> 2;
-		offset |= stream.ReadByte() << 6;
+		offset |= readByte(stream) << 6;
 		offset += addedValue;
 
 		return firstByte;

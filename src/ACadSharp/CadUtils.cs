@@ -108,6 +108,18 @@ internal static class CadUtils
 			//left in a name.
 			if (decodeCodePageCharacters) value = unescapeCodePageCharacters(value);
 
+			return unescapeUnicode(value, false);
+		}
+
+		internal static string UnescapeDxfMText(string value)
+		{
+			// Decode transport escapes before Unicode so a decoded caret is not rescanned.
+			value = value.Replace("^J", "\n").Replace("^M", "\r").Replace("^I", "\t").Replace("^ ", "^");
+			return unescapeUnicode(value, true);
+		}
+
+		private static string unescapeUnicode(string value, bool preserveEscapedSlashes)
+		{
 			if (value.IndexOf("\\U+", System.StringComparison.Ordinal) < 0)
 			{
 				return value;
@@ -116,6 +128,12 @@ internal static class CadUtils
 			System.Text.StringBuilder sb = new System.Text.StringBuilder(value.Length);
 			for (int i = 0; i < value.Length; i++)
 			{
+				if (preserveEscapedSlashes && value[i] == '\\' && i + 1 < value.Length && value[i + 1] == '\\')
+				{
+					sb.Append("\\\\");
+					i++;
+					continue;
+				}
 				if (i + 6 < value.Length + 1
 					&& value[i] == '\\' && i + 2 < value.Length && value[i + 1] == 'U' && value[i + 2] == '+'
 					&& i + 6 < value.Length

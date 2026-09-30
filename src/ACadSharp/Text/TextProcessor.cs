@@ -27,6 +27,11 @@ namespace ACadSharp.Text
 
 				if (current == '\\' && next.HasValue)
 				{
+					if ("AcCfFhHp".IndexOf(next.Value) >= 0 && text.IndexOf(';', index) < 0)
+					{
+						sb.Append(text, index, text.Length - index);
+						break;
+					}
 					switch (next)
 					{
 						case '}':
@@ -98,7 +103,7 @@ namespace ACadSharp.Text
 			while (index < text.Length)
 			{
 				int currIndex = text.IndexOf(@"\", index);
-				if (currIndex <= 0)
+				if (currIndex < 0)
 				{
 					string s = text.Substring(index, text.Length - index);
 					if (openGroup && s.Contains("}"))
@@ -110,8 +115,13 @@ namespace ACadSharp.Text
 					break;
 				}
 
-				char prev = text[currIndex - 1];
+				char prev = currIndex > 0 ? text[currIndex - 1] : '\0';
 				char current = text[currIndex];
+				if (currIndex + 1 >= text.Length)
+				{
+					sb.Append(text, index, text.Length - index);
+					break;
+				}
 				char next = text[currIndex + 1];
 
 				if (prev == '{')
@@ -129,6 +139,12 @@ namespace ACadSharp.Text
 						openGroup = false;
 					}
 					sb.Append(s);
+				}
+
+				if ("AcCfFhHp".IndexOf(next) >= 0 && text.IndexOf(';', currIndex) < 0)
+				{
+					sb.Append(text, currIndex, text.Length - currIndex);
+					break;
 				}
 
 				int f;
@@ -150,11 +166,17 @@ namespace ACadSharp.Text
 						currIndex += 2;
 						break;
 					case 'r':
+						currIndex += 2;
 						break;
 					case '}':
 					case '{':
 					case '\\':
 						sb.Append(next);
+						currIndex += 2;
+						break;
+					default:
+						sb.Append('\\').Append(next);
+						currIndex += 2;
 						break;
 				}
 
@@ -169,7 +191,7 @@ namespace ACadSharp.Text
 			//Example:
 			//- Font: {\\fCalibri|b0|i0|c0|p34;Calibri\\Fcdm|c0; CDM \\fConsolas|b0|i0|c0|p49;Consolas\\P}
 			end = text.IndexOf(';', start);
-			end += 1;
+			end = end < 0 ? text.Length : end + 1;
 			var data = text.Substring(start, end - start).Split('|');
 
 			FontData fontData = new FontData
@@ -183,7 +205,7 @@ namespace ACadSharp.Text
 			//Example:
 			//\\(unknown escape code)(escape text);
 			end = text.IndexOf(';', start);
-			end += 1;
+			end = end < 0 ? text.Length : end + 1;
 		}
 
 		private static void processColor(string text, int start, out int end)
@@ -191,7 +213,7 @@ namespace ACadSharp.Text
 			//Example:
 			//- Color text {\\C3;green}, {\\C5;blue}, {\\C1;red}, ByLayer, {\\C0;ByBlock}, {\\C21;\\c5872631;TrueColor}
 			end = text.IndexOf(';', start);
-			end += 1;
+			end = end < 0 ? text.Length : end + 1;
 		}
 
 		private static void processHeight(string text, int start, out int end)
@@ -199,7 +221,7 @@ namespace ACadSharp.Text
 			//Example:
 			//- {\\H2x;Double height \\H0.875x;height is: 0.35\\H1.14286x;\\P}
 			end = text.IndexOf(';', start);
-			end += 1;
+			end = end < 0 ? text.Length : end + 1;
 		}
 
 		private static void processJustification(string text, int start, out int end)
@@ -207,7 +229,7 @@ namespace ACadSharp.Text
 			//Example:
 			//\\pxqc;Text in the center\\P\\pq*;Hello this is an mText\\P
 			end = text.IndexOf(';', start);
-			end += 1;
+			end = end < 0 ? text.Length : end + 1;
 		}
 	}
 
