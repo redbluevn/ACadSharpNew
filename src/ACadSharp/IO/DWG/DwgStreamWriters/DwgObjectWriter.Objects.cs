@@ -2292,37 +2292,25 @@ internal partial class DwgObjectWriter : DwgSectionIO
 			return;
 		}
 
-		//331
-		this._writer.HandleReference(DwgReferenceType.Undefined, osnap.Geometry);
-
-		//The rest of the reference, in the order the reader now reads it back - see
-		//DwgObjectReader.readOsnapPointRef, where the layout and how it was measured are written down.
-
-		//The main object is named by a subentity path: how many object ids, then the subentity. The
-		//single id is the geometry handle written just above.
 		this._writer.WriteBitLong(1);
-
-		//73
-		this._writer.WriteBitShort((short)osnap.SubentType);
-		//91
+		this._writer.HandleReference(DwgReferenceType.Undefined, osnap.Geometry);
+		this._writer.WriteBitLong((int)osnap.SubentType);
 		this._writer.WriteBitLong(osnap.GsMarker);
-
-		//No intersection object: zero ids in that path, so no handle and no 74/92/332/302 follow.
-		//A reference that came in carrying one loses it here, and says so - see T85: writing 74 and
-		//92 without the 332 that names the object would be half a structure, and no drawing in the
-		//upstream samples or in seventeen production drawings has one to measure against.
-		if (osnap.HasIntersectionReference)
-		{
-			this.notify($"Dimension association {owner} names an intersection object in one of its osnap references; the 74/92/332 group is not written, so that part of the reference is lost", NotificationType.Warning);
-		}
-
-		this._writer.WriteBitLong(0);
-
-		//40
+		this._writer.WriteBitLong(0); //Main xref path strings.
 		this._writer.WriteBitDouble(osnap.GeometryParameter);
-		//10, 20, 30
 		this._writer.Write3BitDouble(osnap.OsnapPoint);
-		//75
+		if (osnap.ObjectOsnapType == ObjectOsnapType.Intersection ||
+			osnap.ObjectOsnapType == ObjectOsnapType.ApparentIntersection)
+		{
+			this._writer.WriteBitLong(osnap.IntersectionGeometry == null ? 0 : 1);
+			if (osnap.IntersectionGeometry != null)
+				this._writer.HandleReference(DwgReferenceType.Undefined, osnap.IntersectionGeometry);
+			this._writer.WriteBitLong((int)osnap.IntersectionSubType);
+			this._writer.WriteBitLong(osnap.IntersectionGsMarker);
+			this._writer.WriteBitLong(0); //Intersection xref path strings.
+		}
+		else if (osnap.HasIntersectionReference)
+			this.notify($"Dimension association {owner} names an intersection object with a non-intersection osnap type; the intersection fields are not written", NotificationType.Warning);
 		this._writer.WriteBit(osnap.HasLastPointRef);
 	}
 

@@ -104,6 +104,8 @@ namespace ACadSharp.Entities
 		/// <inheritdoc/>
 		public override BoundingBox GetBoundingBox()
 		{
+			if (this.TryGetImportedPictureBoundingBox(out BoundingBox picture))
+				return picture;
 			return new BoundingBox(this.FirstPoint, this.SecondPoint);
 		}
 
@@ -162,6 +164,7 @@ namespace ACadSharp.Entities
 
 			MText mText = this.createTextEntity(this.TextMiddlePoint, text);
 			this._block.Entities.Add(mText);
+			this.CaptureUpdatedPicture();
 		}
 	}
 }

@@ -4004,9 +4004,9 @@ namespace ACadSharp.IO.DWG
 			//Drawing dir BS 72 Left to right, etc.; see DXF doc
 			mtext.DrawingDirection = (DrawingDirectionType)this._objectReader.ReadBitShort();
 			//Extents ht BD ---Undocumented and not present in DXF or entget
-			this._objectReader.ReadBitDouble();
+			template.MTextExtentsHeight = this._objectReader.ReadBitDouble();
 			//Extents wid BD ---Undocumented and not present in DXF or entget
-			this._objectReader.ReadBitDouble();
+			template.MTextExtentsWidth = this._objectReader.ReadBitDouble();
 			//Text TV 1 All text in one long string
 			mtext.Value = this._textReader.ReadVariableText();
 
@@ -7828,45 +7828,43 @@ namespace ACadSharp.IO.DWG
 				return template;
 			}
 
-			//331
-			template.ObjectHandle = this.handleReference();
-
-			//Everything below this point used to be left unread. A DWG object stream is length
-			//delimited, so the reader simply stopped and the rest was skipped without a word - which
-			//is why the model came back with the osnap point at the origin and no geometry parameter.
-			//The layout was read off the bits against AutoCAD's own DXF export of the same objects
-			//(oracle/corpus/D_acad.dxf, objects 53DDAD7 and 53DDCA5, which differ in 91 and 40 and so
-			//pin down which field is which).
-
-			//The main object arrives as a subentity path: a count of object ids, then the ids
-			//themselves, then the subentity that is being pointed at. Every reference in the corpus
-			//names exactly one object - the handle already read above. A count other than one would
-			//mean further handles follow and everything after this would be misread, so say so rather
-			//than carry on quietly.
+			//Main subentity path: object count, 331 handles, subtype, marker and xref strings.
 			int mainPathIdCount = this._mergedReaders.ReadBitLong();
-			if (mainPathIdCount != 1)
+			for (int i = 0; i < mainPathIdCount; i++)
 			{
-				this.notify($"Osnap point reference with {mainPathIdCount} object ids in its subentity path; only a single id is understood, the reference is read as far as it can be", NotificationType.Warning);
+				ulong handle = this.handleReference();
+				if (i == 0) template.ObjectHandle = handle;
 			}
-
-			//73
-			osnap.SubentType = (SubentType)this._mergedReaders.ReadBitShort();
-			//91
+			if (mainPathIdCount > 1)
+				this.notify("DIMASSOC main subentity path contains multiple objects; only the first is modeled.", NotificationType.Warning);
+			osnap.SubentType = (SubentType)this._mergedReaders.ReadBitLong();
 			osnap.GsMarker = this._mergedReaders.ReadBitLong();
+			int mainXrefPathCount = this._mergedReaders.ReadBitLong();
+			for (int i = 0; i < mainXrefPathCount; i++) this._mergedReaders.ReadVariableText();
+			if (mainXrefPathCount > 0)
+				this.notify("DIMASSOC main xref paths are read but not modeled.", NotificationType.Warning);
 
-			//The intersection object arrives the same way, and in every sample the count is zero: no
-			//intersection object, so no handle and no 74/92/332/302 to go with it.
-			int intersectPathIdCount = this._mergedReaders.ReadBitLong();
-			if (intersectPathIdCount != 0)
-			{
-				this.notify($"Osnap point reference names {intersectPathIdCount} intersection object ids; no drawing measured so far has any, so the intersection fields are not read", NotificationType.Warning);
-			}
-
-			//40
 			osnap.GeometryParameter = this._mergedReaders.ReadBitDouble();
-			//10, 20, 30
 			osnap.OsnapPoint = this._mergedReaders.Read3BitDouble();
-			//75
+			//Only intersection snaps have the second subentity path, AFTER the point.
+			if (osnap.ObjectOsnapType == ObjectOsnapType.Intersection ||
+				osnap.ObjectOsnapType == ObjectOsnapType.ApparentIntersection)
+			{
+				int intersectionObjectCount = this._mergedReaders.ReadBitLong();
+				for (int i = 0; i < intersectionObjectCount; i++)
+				{
+					ulong handle = this.handleReference();
+					if (i == 0) template.IntersectionObjectHandle = handle;
+				}
+				if (intersectionObjectCount > 1)
+					this.notify("DIMASSOC intersection path contains multiple objects; only the first is modeled.", NotificationType.Warning);
+				osnap.IntersectionSubType = (SubentType)this._mergedReaders.ReadBitLong();
+				osnap.IntersectionGsMarker = this._mergedReaders.ReadBitLong();
+				int intersectionXrefPathCount = this._mergedReaders.ReadBitLong();
+				for (int i = 0; i < intersectionXrefPathCount; i++) this._mergedReaders.ReadVariableText();
+				if (intersectionXrefPathCount > 0)
+					this.notify("DIMASSOC intersection xref paths are read but not modeled.", NotificationType.Warning);
+			}
 			osnap.HasLastPointRef = this._mergedReaders.ReadBit();
 
 			return template;

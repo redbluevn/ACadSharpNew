@@ -130,5 +130,6 @@ public class DimensionLinear : DimensionAligned
 
 		MText mText = this.createTextEntity(this.TextMiddlePoint, text);
 		this._block.Entities.Add(mText);
+		this.CaptureUpdatedPicture();
 	}
 }

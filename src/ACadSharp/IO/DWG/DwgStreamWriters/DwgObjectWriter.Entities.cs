@@ -1531,9 +1531,13 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		this._writer.WriteBitShort((short)mtext.DrawingDirection);
 
 		//Extents ht BD ---Undocumented and not present in DXF or entget
-		this._writer.WriteBitDouble(0);
+		mtext.TryGetMeasuredExtents(out double measuredWidth, out double measuredHeight);
+		//Column layout is not emitted on legacy or annotative DWG paths.
+		if (mtext.HasColumns && (!this.R2018Plus || mtext.IsAnnotative))
+			measuredWidth = measuredHeight = 0;
+		this._writer.WriteBitDouble(measuredHeight);
 		//Extents wid BD ---Undocumented and not present in DXF or entget
-		this._writer.WriteBitDouble(0);
+		this._writer.WriteBitDouble(measuredWidth);
 
 		//Text TV 1 All text in one long string
 		this._writer.WriteVariableText(mtext.Value);
@@ -1612,9 +1616,9 @@ internal partial class DwgObjectWriter : DwgSectionIO
 		//Rect height BD 41 -> wrong code, should be 46, undocumented
 		this._writer.WriteBitDouble(mtext.RectangleHeight);
 		//Extents width BD 42
-		this._writer.WriteBitDouble(mtext.HorizontalWidth);
+		this._writer.WriteBitDouble(measuredWidth);
 		//Extents height BD 43
-		this._writer.WriteBitDouble(mtext.VerticalHeight);
+		this._writer.WriteBitDouble(measuredHeight);
 		//END REDUNDANT FIELDS
 
 		//Column type BS 71 0 = No columns, 1 = static columns, 2 = dynamic columns

@@ -280,16 +280,15 @@ public class Spline : Entity, IOrientable
 			throw new ArgumentOutOfRangeException(nameof(t), t, "The parametric position must be a value between 0 and 1.");
 		}
 
-		if (t == 1)
-		{
-			t -= double.Epsilon;
-		}
-
 		this.prepare(out XYZ[] controlPts, out double[] weights, out double[] knots);
 		this.getStartAndEndKnots(knots, out double uStart, out double uEnd);
 
 		double uDelta = (uEnd - uStart) * t;
 		double u = uStart + uDelta;
+		if (u >= uEnd)
+		{
+			u = previousDouble(uEnd);
+		}
 		return c(controlPts, weights, knots, this.Degree, u);
 	}
 
@@ -329,7 +328,7 @@ public class Spline : Entity, IOrientable
 
 		if (!(this.IsClosed || this.IsPeriodic))
 		{
-			vertexes.Add(controlPts[controlPts.Length - 1]);
+			vertexes.Add(c(controlPts, weights, knots, this.Degree, previousDouble(uEnd)));
 		}
 
 		return vertexes;
@@ -753,25 +752,19 @@ public class Spline : Entity, IOrientable
 
 	private void getStartAndEndKnots(double[] knots, out double uStart, out double uEnd)
 	{
-		//Periodic first. A periodic spline forms a closed loop and so carries the closed flag as
-		//well, which meant this branch never ran: the domain of an unclamped knot vector starts at
-		//knots[degree], and evaluating below it makes every basis function vanish, so the first
-		//sampled point came back as the zero vector and dragged the bounding box to the origin.
-		if (this.IsPeriodic)
-		{
-			uStart = knots[this.Degree];
-			uEnd = knots[knots.Length - this.Degree - 1];
-		}
-		else if (this.IsClosed)
-		{
-			uStart = knots[0];
-			uEnd = knots[knots.Length - 1];
-		}
-		else
-		{
-			uStart = knots[0];
-			uEnd = knots[knots.Length - 1];
-		}
+		//The active domain is independent of the closed/periodic flags. Imported
+		//outer knots need not be clamped exactly to these boundaries.
+		uStart = knots[this.Degree];
+		uEnd = knots[knots.Length - this.Degree - 1];
+	}
+
+	private static double previousDouble(double value)
+	{
+		//Basis intervals are half-open. double.Epsilon subtracted from an ordinary
+		//knot rounds back to the same number; use the representable left limit.
+		if (value == 0) return -double.Epsilon;
+		long bits = BitConverter.DoubleToInt64Bits(value);
+		return BitConverter.Int64BitsToDouble(value > 0 ? bits - 1 : bits + 1);
 	}
 
 	private void prepare(out XYZ[] controlPts, out double[] weights, out double[] knots)

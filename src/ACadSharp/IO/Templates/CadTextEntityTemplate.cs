@@ -9,6 +9,10 @@ namespace ACadSharp.IO.Templates
 
 		public string StyleName { get; set; }
 
+		internal double? MTextExtentsWidth { get; set; }
+
+		internal double? MTextExtentsHeight { get; set; }
+
 		public CadTextEntityTemplate(Entity entity) : base(entity) { }
 
 		private System.Text.StringBuilder _dxfMText;
@@ -34,6 +38,10 @@ namespace ACadSharp.IO.Templates
 			if (this.getTableReference(builder, this.StyleHandle, this.StyleName, out TextStyle style))
 			{
 				text.Style = style;
+			}
+			if (text is MText mtext && this.MTextExtentsWidth.HasValue && this.MTextExtentsHeight.HasValue)
+			{
+				mtext.SetMeasuredExtents(this.MTextExtentsWidth.Value, this.MTextExtentsHeight.Value);
 			}
 		}
 	}

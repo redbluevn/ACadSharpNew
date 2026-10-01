@@ -62,6 +62,21 @@ namespace ACadSharp.IO
 				}
 			}
 
+			int stalePictures = 0;
+			ulong firstStaleHandle = 0;
+			foreach (BlockRecord record in this._document.BlockRecords)
+			{
+				foreach (Dimension dimension in record.Entities.OfType<Dimension>())
+				{
+					if (dimension.PictureNeedsUpdate)
+					{
+						if (stalePictures++ == 0) firstStaleHandle = dimension.Handle;
+					}
+				}
+			}
+			if (stalePictures > 0)
+				this.triggerNotification($"{stalePictures} dimension(s) have an outdated picture block after geometry or style edits (first handle {firstStaleHandle:X}). Call UpdateBlock() or enable the appropriate UpdateDimensions writer option before saving.", NotificationType.Warning);
+
 			this._encoding = this.getListedEncoding(this._document.Header.CodePage);
 		}
 

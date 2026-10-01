@@ -92,12 +92,12 @@ public partial class Hatch
 			/// <inheritdoc/>
 			public override void ApplyTransform(Transform transform)
 			{
-				double num = this.Radius;
-				double num2 = this.StartAngle;
-				double num3 = this.EndAngle;
-				bool flag = this.CounterClockWise;
+				bool fullCircle = MathHelper.IsEqual(Math.Abs(this.EndAngle - this.StartAngle), MathHelper.TwoPI);
+				//Radius and endpoint directions are vectors: translation only moves the center.
+				Matrix4 linear = transform.Matrix;
+				linear.M30 = linear.M31 = linear.M32 = 0.0;
 				this.Center = transform.ApplyTransform(this.Center.Convert<XYZ>()).Convert<XY>();
-				this.Radius = transform.ApplyTransform(new XYZ(this.Radius, 0.0, 0.0)).GetLength();
+				this.Radius = (linear * new XYZ(this.Radius, 0.0, 0.0)).GetLength();
 
 				if (!this.CounterClockWise)
 				{
@@ -108,10 +108,10 @@ public partial class Hatch
 				XYZ vstart = new XYZ(Math.Cos(StartAngle), Math.Sin(StartAngle), 0);
 				XYZ vend = new XYZ(Math.Cos(EndAngle), Math.Sin(EndAngle), 0);
 
-				vstart = transform.ApplyTransform(vstart);
+				vstart = linear * vstart;
 				this.StartAngle = Math.Atan2(vstart.Y, vstart.X);
 
-				vend = transform.ApplyTransform(vend);
+				vend = linear * vend;
 				this.EndAngle = Math.Atan2(vend.Y, vend.X);
 
 				if (!this.CounterClockWise)
@@ -119,6 +119,8 @@ public partial class Hatch
 					this.StartAngle = 0.0 - this.StartAngle;
 					this.EndAngle = 0.0 - this.EndAngle;
 				}
+				//atan2 maps both endpoints of a full turn to the same angle.
+				if (fullCircle) this.EndAngle = this.StartAngle + MathHelper.TwoPI;
 			}
 
 			/// <inheritdoc/>

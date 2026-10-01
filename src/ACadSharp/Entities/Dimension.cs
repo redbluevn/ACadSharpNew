@@ -249,6 +249,46 @@ public abstract class Dimension : Entity, IOrientable
 
 	private DimensionStyle _style = DimensionStyle.Default;
 
+	private DimensionPicture _importedPicture;
+	private bool _pictureNeedsUpdate;
+	private bool hasPictureContext => this.Owner == null || this.Owner is BlockRecord owner
+		&& owner.Name.Equals(BlockRecord.ModelSpaceName, StringComparison.OrdinalIgnoreCase);
+
+	internal bool PictureNeedsUpdate => this._pictureNeedsUpdate
+		|| (this._importedPicture != null && (!this.hasPictureContext || !this._importedPicture.Matches(this)));
+
+	internal void CaptureImportedPicture(Dictionary<DimensionStyle, DimensionPicture.StyleState> styles = null)
+	{
+		this._pictureNeedsUpdate = false;
+		//The native WCS picture contract has been verified for aligned and rotated dimensions.
+		//Other dimension types retain their existing geometry fallback until independently verified.
+		this._importedPicture = (this.GetType() == typeof(DimensionAligned) || this.GetType() == typeof(DimensionLinear))
+			&& this.Block != null && this.Block.IsAnonymous
+			//Nested dimensions can carry pictures in a different coordinate frame from their owner.
+			//The native WCS contract here is verified for model space, not nested block/paper contexts.
+			&& this.hasPictureContext
+			? new DimensionPicture(this, styles) : null;
+		if (this._importedPicture != null && !this._importedPicture.IsUsable)
+			this._importedPicture = null;
+	}
+
+	internal bool TryGetImportedPictureBoundingBox(out BoundingBox box)
+	{
+		box = BoundingBox.Null;
+		return this.hasPictureContext && this._importedPicture != null && this._importedPicture.TryGetBoundingBox(this, out box);
+	}
+
+	internal void CaptureUpdatedPicture()
+	{
+		this.CaptureImportedPicture();
+		//The current block generator uses base Style, not all native DSTYLE overrides.
+		if (this.HasStyleOverride)
+		{
+			this._pictureNeedsUpdate = true;
+			this._importedPicture = null;
+		}
+	}
+
 	protected Dimension(DimensionType type)
 	{
 		this._flags = type;
@@ -258,6 +298,9 @@ public abstract class Dimension : Entity, IOrientable
 	/// <inheritdoc/>
 	public override void ApplyTransform(Transform transform)
 	{
+		this._pictureNeedsUpdate = this.PictureNeedsUpdate || this._importedPicture != null
+			|| this.Block != null && (this.GetType() == typeof(DimensionAligned) || this.GetType() == typeof(DimensionLinear));
+		this._importedPicture = null;
 		XYZ newNormal = this.transformNormal(transform, this.Normal);
 		this.getWorldMatrix(transform, this.Normal, newNormal, out Matrix3 transOW, out Matrix3 transWO);
 
@@ -278,6 +321,13 @@ public abstract class Dimension : Entity, IOrientable
 
 		clone._style = this.Style.CloneTyped();
 		clone._block = this.Block?.CloneTyped();
+		//A clone has independent style and block instances; never share the import snapshot.
+		clone._importedPicture = null;
+		clone._pictureNeedsUpdate = this.PictureNeedsUpdate;
+		//CadObject.Clone does not retain XData; a picture rendered with overrides is no longer current.
+		clone._pictureNeedsUpdate |= this.HasStyleOverride;
+		if (this._importedPicture != null && !this.PictureNeedsUpdate && !this.HasStyleOverride)
+			clone.CaptureImportedPicture();
 
 		return clone;
 	}
@@ -534,6 +584,8 @@ public abstract class Dimension : Entity, IOrientable
 
 	internal override void AssignDocument(CadDocument doc)
 	{
+		bool pictureWasCaptured = this._importedPicture != null;
+		this._pictureNeedsUpdate = this.PictureNeedsUpdate;
 		base.AssignDocument(doc);
 
 		this._style = this.updateTableEntry(this._style, l => this._style = l, doc.DimensionStyles);
@@ -543,10 +595,19 @@ public abstract class Dimension : Entity, IOrientable
 		{
 			this._block.Name = this.generateBlockName();
 		}
+		//Same-name table entries may replace the detached style or block with different geometry.
+		if (pictureWasCaptured)
+		{
+			this._pictureNeedsUpdate |= !this.hasPictureContext || !this._importedPicture.Matches(this);
+			if (this._pictureNeedsUpdate) this._importedPicture = null;
+		}
 	}
 
 	internal override void UnassignDocument()
 	{
+		bool pictureWasCurrent = this._importedPicture != null && !this.PictureNeedsUpdate;
+		this._pictureNeedsUpdate = this.PictureNeedsUpdate;
+		this._importedPicture = null;
 		this.Document.DimensionStyles.RemoveReference(this.Style.Name, this);
 		this.Document.BlockRecords.RemoveReference(this.Block?.Name, this);
 
@@ -554,6 +615,8 @@ public abstract class Dimension : Entity, IOrientable
 
 		this._style = (DimensionStyle)this.Style?.Clone();
 		this._block = (BlockRecord)this.Block?.Clone();
+		if (pictureWasCurrent)
+			this.CaptureImportedPicture();
 	}
 
 	protected static Entity dimensionLine(XYZ start, XYZ end, DimensionStyle style)
@@ -711,6 +774,9 @@ public abstract class Dimension : Entity, IOrientable
 
 	protected void createBlock()
 	{
+		//Keep incomplete/failed rebuilds dirty. Successful aligned/linear rebuilds capture at the end.
+		this._pictureNeedsUpdate |= this.GetType() == typeof(DimensionAligned) || this.GetType() == typeof(DimensionLinear);
+		this._importedPicture = null;
 		if (this._block == null)
 		{
 			this._block = new BlockRecord(this.generateBlockName());

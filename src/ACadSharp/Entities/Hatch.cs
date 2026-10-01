@@ -85,8 +85,10 @@ public partial class Hatch : Entity, IOrientable
 
 		set
 		{
+			if (this._patternAngle == value) return;
+			double delta = value - this._patternAngle;
 			this._patternAngle = value;
-			this.Pattern?.Update(XY.Zero, this._patternAngle, 1);
+			this.Pattern?.Update(XY.Zero, delta, 1);
 		}
 	}
 
@@ -103,8 +105,10 @@ public partial class Hatch : Entity, IOrientable
 
 		set
 		{
+			if (this._patternScale == value) return;
+			double factor = this._patternScale == 0 ? value : value / this._patternScale;
 			this._patternScale = value;
-			this.Pattern?.Update(XY.Zero, 0, this._patternScale);
+			this.Pattern?.Update(XY.Zero, 0, factor);
 		}
 	}
 
@@ -139,7 +143,7 @@ public partial class Hatch : Entity, IOrientable
 
 	private double _patternAngle;
 
-	private double _patternScale;
+	private double _patternScale = 1.0;
 
 	//73	For MPolygon, boundary annotation flag:
 	//0 = boundary is not an annotated boundary
@@ -161,25 +165,31 @@ public partial class Hatch : Entity, IOrientable
 		}
 
 		var newNormal = this.transformNormal(transform, this.Normal);
-		var worldTransform = this.getWorldMatrix(transform, this.Normal, newNormal, out Matrix3 transOW, out Matrix3 transWO);
+		this.getWorldMatrix(transform, this.Normal, newNormal, out Matrix3 transOW, out Matrix3 transWO);
+		double oldAngle = this._patternAngle;
+		double oldScale = this._patternScale;
 
 		foreach (BoundaryPath p in this.Paths)
 		{
 			p.ApplyTransform(transform);
 		}
+		for (int i = 0; i < this.SeedPoints.Count; i++)
+		{
+			this.SeedPoints[i] = transform.ApplyTransform(this.SeedPoints[i].Convert<XYZ>()).Convert<XY>();
+		}
 
 		XY refAxis = XY.Rotate(XY.AxisX, this._patternAngle);
-		refAxis = this._patternScale * refAxis;
 		XYZ v = transOW * new XYZ(refAxis.X, refAxis.Y, 0.0);
-		v = worldTransform * v;
+		v = (transform.Matrix * new XYZM(v.X, v.Y, v.Z, 0)).Convert<XYZ>();
 		v = transWO * v;
 		XY axis = new XY(v.X, v.Y);
 		this._patternAngle = axis.GetAngle();
 
 		double patScale = axis.GetLength();
-		this._patternScale = MathHelper.IsZero(patScale) ? MathHelper.Epsilon : patScale;
+		patScale = MathHelper.IsZero(patScale) ? MathHelper.Epsilon : patScale;
+		this._patternScale = oldScale * patScale;
 
-		this.Pattern?.Update(transform.Translation.Convert<XY>(), this._patternAngle, this._patternScale);
+		this.Pattern?.Update(transform.Translation.Convert<XY>(), this._patternAngle - oldAngle, patScale);
 		this.Normal = newNormal;
 	}
 
@@ -190,6 +200,7 @@ public partial class Hatch : Entity, IOrientable
 
 		clone.GradientColor = this.GradientColor?.Clone();
 		clone.Pattern = this.Pattern?.Clone();
+		clone.SeedPoints = new List<XY>(this.SeedPoints);
 
 		clone.Paths = new List<BoundaryPath>();
 		foreach (BoundaryPath item in this.Paths)

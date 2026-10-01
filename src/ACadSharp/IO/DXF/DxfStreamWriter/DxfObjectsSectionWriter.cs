@@ -1792,14 +1792,6 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 			return;
 		}
 
-		//The reader takes 74 and 92 in, and 332 - the handle that says which object the intersection
-		//is with - it throws away. Nothing here writes any of the three, so a reference that arrived
-		//with an intersection leaves without one. Reported rather than invented: see T85.
-		if (osnapPoint.HasIntersectionReference)
-		{
-			this.notify($"Dimension association {owner} names an intersection object in one of its osnap references; the 74/92/332 group is not written, so that part of the reference is lost", NotificationType.Warning);
-		}
-
 		this._writer.Write(1, DimensionAssociation.OsnapPointRefClassName);
 
 		this._writer.Write(72, (short)osnapPoint.ObjectOsnapType);
@@ -1809,6 +1801,17 @@ internal class DxfObjectsSectionWriter : DxfSectionWriterBase
 		this._writer.Write(40, osnapPoint.GeometryParameter);
 
 		this._writer.Write(10, osnapPoint.OsnapPoint);
+
+		if (osnapPoint.ObjectOsnapType == ObjectOsnapType.Intersection ||
+			osnapPoint.ObjectOsnapType == ObjectOsnapType.ApparentIntersection)
+		{
+			if (osnapPoint.IntersectionGeometry != null)
+				this._writer.WriteHandle(332, osnapPoint.IntersectionGeometry);
+			this._writer.Write(74, (short)osnapPoint.IntersectionSubType);
+			this._writer.Write(92, osnapPoint.IntersectionGsMarker);
+		}
+		else if (osnapPoint.HasIntersectionReference)
+			this.notify($"Dimension association {owner} names an intersection object with a non-intersection osnap type; the intersection fields are not written", NotificationType.Warning);
 
 		this._writer.Write(75, (short)(osnapPoint.HasLastPointRef ? 1 : 0));
 	}

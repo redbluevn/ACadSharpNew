@@ -120,7 +120,8 @@ public partial class Hatch
 				for (int i = 0; i < arr.Length; i++)
 				{
 					var weight = arr[i].Z;
-					var v = transform.ApplyTransform(arr[i]);
+					//Z is the rational weight; it must not move X/Y during a 3D transform.
+					var v = transform.ApplyTransform(new XYZ(arr[i].X, arr[i].Y, 0));
 					v.Z = weight;
 
 					this.ControlPoints.Add(v);

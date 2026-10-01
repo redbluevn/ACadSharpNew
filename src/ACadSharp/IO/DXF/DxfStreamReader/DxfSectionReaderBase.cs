@@ -716,6 +716,12 @@ internal abstract class DxfSectionReaderBase
 			case 1 or 3 when tmp.CadObject is MText mtext:
 				tmp.AppendDxfMText(this._reader.Value.ToString());
 				return true;
+			case 42 when tmp.CadObject is MText:
+				tmp.MTextExtentsWidth = this._reader.ValueAsDouble;
+				return true;
+			case 43 when tmp.CadObject is MText:
+				tmp.MTextExtentsHeight = this._reader.ValueAsDouble;
+				return true;
 			case 50 when tmp.CadObject is MText mtext://Read only for MText
 				double angle = this._reader.ValueAsAngle;
 				mtext.AlignmentPoint = new XYZ(System.Math.Cos(angle), System.Math.Sin(angle), 0.0);
@@ -961,6 +967,7 @@ internal abstract class DxfSectionReaderBase
 				return true;
 			//Information about the hatch pattern
 			case 75:
+				hatch.Style = (HatchStyleType)this._reader.ValueAsInt;
 				return true;
 			//Number of pattern definition lines
 			case 78:
@@ -2084,7 +2091,8 @@ internal abstract class DxfSectionReaderBase
 						end = true;
 						break;
 				}
-				this._reader.ReadNext();
+				//Leave the first non-pattern code (for example 98) for the outer hatch reader.
+				if (!end) this._reader.ReadNext();
 			}
 
 			pattern.Lines.Add(line);

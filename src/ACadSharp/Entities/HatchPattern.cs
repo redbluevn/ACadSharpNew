@@ -201,7 +201,8 @@ public partial class HatchPattern
 		{
 			line.Angle += rotation;
 			line.BasePoint = transform.ApplyTransform(line.BasePoint.Convert<XYZ>()).Convert<XY>();
-			line.Offset = transform.ApplyTransform(line.Offset.Convert<XYZ>()).Convert<XY>();
+			//Spacing between pattern lines is a vector; moving the pattern must not change it.
+			line.Offset = (transform.Matrix * new XYZM(line.Offset.X, line.Offset.Y, 0, 0)).Convert<XY>();
 			line.DashLengths = line.DashLengths.Select(d => d * scale).ToList();
 		}
 	}

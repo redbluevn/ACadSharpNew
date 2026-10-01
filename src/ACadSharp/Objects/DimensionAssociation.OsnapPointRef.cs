@@ -43,8 +43,7 @@ public partial class DimensionAssociation
 		[DxfCodeValue(91)]
 		public int GsMarker { get; set; }
 
-		//332
-		//ID of intersection object (geometry)
+		internal CadObject IntersectionGeometry { get; set; }
 
 		/// <summary>
 		/// Gets or sets which part of the intersection object the osnap point attaches to.
@@ -58,15 +57,8 @@ public partial class DimensionAssociation
 		/// <summary>
 		/// Whether this reference attaches to the intersection of its object with a second one.
 		/// </summary>
-		/// <remarks>
-		/// The DXF reader takes 74 and 92 in but drops the 332 that names the second object, and no
-		/// writer emits any of the three - so a reference that arrives with an intersection leaves
-		/// without one. The writers ask this to report that loss instead of making it silently
-		/// (T85); filling 74 and 92 in without 332 would be half a structure, and no drawing on hand
-		/// carries one to measure the rest against.
-		/// </remarks>
 		internal bool HasIntersectionReference
-			=> this.IntersectionSubType != SubentType.None || this.IntersectionGsMarker != 0;
+			=> this.IntersectionGeometry != null || this.IntersectionSubType != SubentType.None || this.IntersectionGsMarker != 0;
 
 		//302
 		//Handle(string) of intersection Xref object

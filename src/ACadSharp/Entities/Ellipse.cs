@@ -179,7 +179,12 @@ public class Ellipse : Entity, ICurve, IOrientable
 	{
 		var result = base.IsValid(format, version, out errors);
 
-		if (!this.Normal.IsPerpendicular(this.MajorAxisEndPoint))
+		//Use an angular tolerance: a tiny round-off error must not make the writer
+		//discard an ellipse, and the decision must not depend on its axis length.
+		double normalLength = this.Normal.GetLength();
+		double axisLength = this.MajorAxisEndPoint.GetLength();
+		double cosine = (this.Normal / normalLength).Dot(this.MajorAxisEndPoint / axisLength);
+		if (!(Math.Abs(cosine) <= MathHelper.Epsilon))
 		{
 			errors.Add($"{nameof(this.Normal)} and {nameof(this.MajorAxisEndPoint)} must be perpendicular.");
 			result = false;

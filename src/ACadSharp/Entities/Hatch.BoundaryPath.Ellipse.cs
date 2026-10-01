@@ -114,7 +114,8 @@ public partial class Hatch
 			public override void ApplyTransform(Transform transform)
 			{
 				this.Center = transform.ApplyTransform(this.Center.Convert<XYZ>()).Convert<XY>();
-				this.MajorAxisEndPoint = transform.ApplyTransform(this.MajorAxisEndPoint.Convert<XYZ>()).Convert<XY>();
+				//The major-axis endpoint is a displacement from Center, not a position.
+				this.MajorAxisEndPoint = (transform.Matrix * new XYZM(this.MajorAxisEndPoint.X, this.MajorAxisEndPoint.Y, 0, 0)).Convert<XY>();
 			}
 
 			/// <inheritdoc/>

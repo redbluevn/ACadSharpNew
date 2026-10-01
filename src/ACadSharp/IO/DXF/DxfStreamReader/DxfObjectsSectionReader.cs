@@ -2573,9 +2573,12 @@ internal class DxfObjectsSectionReader : DxfSectionReaderBase
 				case 331:
 					template.ObjectHandle = this._reader.ValueAsHandle;
 					break;
-				case 302:
 				case 332:
-					//What are these?
+					template.IntersectionObjectHandle = this._reader.ValueAsHandle;
+					break;
+				case 301:
+				case 302:
+					this._builder.Notify("DIMASSOC xref paths are read but not modeled.", NotificationType.Warning);
 					break;
 				default:
 					end = true;

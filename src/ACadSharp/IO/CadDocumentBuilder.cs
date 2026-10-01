@@ -136,6 +136,14 @@ internal abstract class CadDocumentBuilder
 		{
 			template.Build(this);
 		}
+
+		//Capture only after the whole picture and its shared styles have resolved their references.
+		var pictureStyles = new Dictionary<DimensionStyle, DimensionPicture.StyleState>();
+		foreach (CadTemplate template in this.cadObjectsTemplates.Values)
+		{
+			if (template.CadObject is Dimension dimension)
+				dimension.CaptureImportedPicture(pictureStyles);
+		}
 	}
 
 	public void BuildTable<T>(Table<T> table)

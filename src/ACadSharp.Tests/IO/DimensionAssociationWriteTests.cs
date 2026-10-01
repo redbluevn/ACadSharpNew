@@ -32,8 +32,46 @@ public class DimensionAssociationWriteTests
 	//AutoCAD's own "not set" sentinel for a coordinate, not a position anything is at.
 	private static readonly XYZ MeasuredOsnapPoint = new XYZ(0.0, 0.0, 2.0e50);
 
+	[Fact]
+	public void AutoCadAuthoredApparentIntersectionKeepsBothReferences()
+	{
+		//Generated from three synthetic lines and one dimension, then saved by AutoCAD
+		//as R2007. This fixture contains no client drawing data. The former reader
+		//misread the first intersection tail and failed on the second reference.
+		using var reader = new DwgReader(Path.Combine(TestVariables.SamplesFolder,
+			"regressions", "dimassoc-apparent-intersection-AC1021.dwg"));
+		reader.Configuration.Failsafe = false;
+		reader.OnNotification += (sender, note) => Assert.NotEqual(NotificationType.Error, note.NotificationType);
+		var doc = reader.Read();
+		void verify(CadDocument document)
+		{
+			var actual = this.association(document);
+			Assert.Equal(AssociativityFlags.FirstPointReference | AssociativityFlags.SecondPointReference, actual.AssociativityFlags);
+			Assert.NotSame(actual.FirstPointRef.Geometry, actual.SecondPointRef.Geometry);
+			Assert.Same(actual.FirstPointRef.IntersectionGeometry, actual.SecondPointRef.IntersectionGeometry);
+			Assert.IsType<Line>(actual.FirstPointRef.IntersectionGeometry);
+			foreach (var reference in new[] { actual.FirstPointRef, actual.SecondPointRef })
+			{
+				Assert.Equal(ObjectOsnapType.ApparentIntersection, reference.ObjectOsnapType);
+				Assert.IsType<Line>(reference.Geometry);
+				Assert.Equal(SubentType.Edge, reference.SubentType);
+				Assert.Equal(SubentType.Edge, reference.IntersectionSubType);
+				Assert.Equal(0, reference.GsMarker);
+				Assert.Equal(0, reference.IntersectionGsMarker);
+				Assert.Equal(0, reference.GeometryParameter);
+				Assert.Equal(XYZ.Zero, reference.OsnapPoint);
+				Assert.False(reference.HasLastPointRef);
+			}
+		}
+		verify(doc);
+		using var output = new MemoryStream();
+		DwgWriter.Write(output, doc);
+		verify(DwgReader.Read(new MemoryStream(output.ToArray())));
+	}
+
 	[Theory]
 	[InlineData(ACadVersion.AC1018)]
+	[InlineData(ACadVersion.AC1021)]
 	[InlineData(ACadVersion.AC1024)]
 	[InlineData(ACadVersion.AC1032)]
 	public void EveryFieldSurvivesADwgRoundTrip(ACadVersion version)
@@ -103,10 +141,7 @@ public class DimensionAssociationWriteTests
 		//values above 2 had no test at all before, and nothing said whether the writers passed them
 		//through or clamped them.
 		//
-		//IntersectionSubType is deliberately not asserted here. Neither writer emits it: the DWG
-		//writer writes a zero-length intersection subentity path on purpose, and the DXF writer has
-		//no 74 at all. Asserting it would be testing a gap that has nothing to do with this enum,
-		//and the first draft of this test did exactly that and went red on seven of eight cases.
+		//Intersection fields are exercised separately with intersection osnap types.
 		foreach (bool dwg in new[] { true, false })
 		{
 			CadDocument doc = this.document(out DimensionAssociation before);
@@ -172,18 +207,49 @@ public class DimensionAssociationWriteTests
 	}
 
 	[Theory]
+	[InlineData(false, ACadVersion.AC1015, ObjectOsnapType.Intersection)]
+	[InlineData(false, ACadVersion.AC1021, ObjectOsnapType.ApparentIntersection)]
+	[InlineData(false, ACadVersion.AC1032, ObjectOsnapType.ApparentIntersection)]
+	[InlineData(true, ACadVersion.AC1032, ObjectOsnapType.Intersection)]
+	[InlineData(true, ACadVersion.AC1032, ObjectOsnapType.ApparentIntersection)]
+	public void BothIntersectionReferencesSurviveRoundTrip(bool dxf, ACadVersion version, ObjectOsnapType type)
+	{
+		var doc = this.document(out var association);
+		doc.Header.Version = version;
+		var other = new Line(new XYZ(5, -5, 0), new XYZ(5, 5, 0));
+		doc.Entities.Add(other);
+		association.FirstPointRef.ObjectOsnapType = type;
+		association.FirstPointRef.IntersectionGeometry = other;
+		association.FirstPointRef.IntersectionSubType = SubentType.Edge;
+		association.FirstPointRef.IntersectionGsMarker = 17;
+		association.SecondPointRef = new DimensionAssociation.OsnapPointRef
+		{
+			ObjectOsnapType = type, Geometry = association.FirstPointRef.Geometry,
+			IntersectionGeometry = other, IntersectionSubType = SubentType.Edge,
+			IntersectionGsMarker = 23, OsnapPoint = new XYZ(5, 0, 0), HasLastPointRef = true
+		};
+		association.AssociativityFlags |= AssociativityFlags.SecondPointReference;
+		using var output = new MemoryStream();
+		if (dxf) DxfWriter.Write(output, doc); else DwgWriter.Write(output, doc);
+		var back = dxf ? DxfReader.Read(new MemoryStream(output.ToArray())) : DwgReader.Read(new MemoryStream(output.ToArray()));
+		var actual = this.association(back);
+		this.assertSame(association, actual);
+		Assert.Equal(other.Handle, actual.FirstPointRef.IntersectionGeometry.Handle);
+		Assert.Same(actual.FirstPointRef.IntersectionGeometry, actual.SecondPointRef.IntersectionGeometry);
+		Assert.Equal(SubentType.Edge, actual.FirstPointRef.IntersectionSubType);
+		Assert.Equal(17, actual.FirstPointRef.IntersectionGsMarker);
+		Assert.Equal(23, actual.SecondPointRef.IntersectionGsMarker);
+		Assert.Equal(new XYZ(5, 0, 0), actual.SecondPointRef.OsnapPoint);
+		Assert.True(actual.SecondPointRef.HasLastPointRef);
+	}
+
+	[Theory]
 	[InlineData(true)]
 	[InlineData(false)]
-	public void AnIntersectionReferenceIsNotDroppedInSilence(bool dwg)
+	public void IntersectionFieldsOnANonIntersectionSnapAreReported(bool dwg)
 	{
-		//T85. The DXF reader takes 74 and 92 in and drops the 332 that names the second object;
-		//no writer emits any of the three. So a reference that arrives attached to an intersection
-		//leaves without one, and until this it left without a word either - the one class of loss
-		//this project treats as worse than the loss itself.
-		//
-		//Not fixed by writing 74 and 92: without 332 that is half a structure, and no drawing in
-		//the upstream samples or in the seventeen production drawings carries one to measure the
-		//rest against.
+		//Intersection metadata attached to an Endpoint snap is inconsistent. Neither
+		//format can emit its conditional intersection tail, so report the loss.
 		CadDocument doc = this.document(out DimensionAssociation association);
 		association.FirstPointRef.IntersectionSubType = SubentType.Edge;
 		association.FirstPointRef.IntersectionGsMarker = 3;

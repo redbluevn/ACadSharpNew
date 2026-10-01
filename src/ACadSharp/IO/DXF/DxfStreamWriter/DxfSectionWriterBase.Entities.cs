@@ -1,4 +1,4 @@
-using ACadSharp.Entities;
+﻿using ACadSharp.Entities;
 using ACadSharp.Entities.AecObjects;
 using ACadSharp.Entities.Mechanical;
 using ACadSharp.Objects;
@@ -1354,6 +1354,11 @@ internal abstract partial class DxfSectionWriterBase
 		this._writer.Write(11, mtext.AlignmentPoint, map);
 
 		this._writer.Write(210, mtext.Normal, map);
+		mtext.TryGetMeasuredExtents(out double measuredWidth, out double measuredHeight);
+		if (mtext.HasColumns && this.Version < ACadVersion.AC1032)
+			measuredWidth = measuredHeight = 0;
+		this._writer.Write(42, measuredWidth);
+		this._writer.Write(43, measuredHeight);
 
 		if (!mtext.HasColumns || this.Version < ACadVersion.AC1032)
 		{
@@ -1368,8 +1373,9 @@ internal abstract partial class DxfSectionWriterBase
 
 		this._writer.Write(40, mtext.RectangleWidth);
 		this._writer.Write(41, mtext.RectangleHeight);
-		this._writer.Write(42, mtext.HorizontalWidth);
-		this._writer.Write(43, mtext.VerticalHeight);
+		mtext.TryGetMeasuredExtents(out measuredWidth, out measuredHeight);
+		this._writer.Write(42, measuredWidth);
+		this._writer.Write(43, measuredHeight);
 
 		this._writer.Write(71, (short)mtext.ColumnData.ColumnType);
 		this._writer.Write(72, (short)mtext.ColumnData.ColumnCount);

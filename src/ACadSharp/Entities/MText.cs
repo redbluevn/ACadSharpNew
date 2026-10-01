@@ -4,6 +4,7 @@ using ACadSharp.Text;
 using CSMath;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace ACadSharp.Entities;
 
@@ -196,6 +197,69 @@ public partial class MText : Entity, IText
 
 	private TextStyle _style = TextStyle.Default;
 
+	private bool _hasMeasuredExtents;
+	private TextColumnData _extentColumns;
+	private double[] _extentColumnHeights;
+	private string _extentValue, _extentFont, _extentBigFont;
+	private double _extentTextHeight, _extentRectangleWidth, _extentRectangleHeight, _extentSpacing;
+	private double _extentMeasuredWidth, _extentMeasuredHeight;
+	private double _extentStyleWidth, _extentStyleHeight, _extentStyleOblique;
+	private LineSpacingStyleType _extentSpacingStyle;
+	private DrawingDirectionType _extentDirection;
+	private StyleFlags _extentStyleFlags;
+	private TextMirrorFlag _extentMirror;
+	private FontFlags _extentFontFlags;
+
+	internal void SetMeasuredExtents(double width, double height)
+	{
+		this._extentMeasuredWidth = this.HorizontalWidth = width;
+		this._extentMeasuredHeight = this.VerticalHeight = height;
+		this._hasMeasuredExtents = width > 0 && height > 0 && !double.IsInfinity(width) && !double.IsInfinity(height);
+		this._extentColumns = this.ColumnData.Clone();
+		this._extentColumnHeights = this.ColumnData.Heights.ToArray();
+		this._extentValue = this.Value;
+		this._extentTextHeight = this.Height;
+		this._extentRectangleWidth = this.RectangleWidth;
+		this._extentRectangleHeight = this.RectangleHeight;
+		this._extentSpacing = this.LineSpacing;
+		this._extentSpacingStyle = this.LineSpacingStyle;
+		this._extentDirection = this.DrawingDirection;
+		this._extentFont = this.Style.Filename;
+		this._extentBigFont = this.Style.BigFontFilename;
+		this._extentStyleWidth = this.Style.Width;
+		this._extentStyleHeight = this.Style.Height;
+		this._extentStyleOblique = this.Style.ObliqueAngle;
+		this._extentStyleFlags = this.Style.Flags;
+		this._extentMirror = this.Style.MirrorFlag;
+		this._extentFontFlags = this.Style.TrueType;
+	}
+
+	internal bool TryGetMeasuredExtents(out double width, out double height)
+	{
+		width = height = 0;
+		//The stored dimensions describe the imported layout, not a new font measurement.
+		//After text/layout/style edits, retain the point fallback until measured again.
+		if (!this._hasMeasuredExtents || this._extentValue != this.Value
+			|| this._extentColumns.ColumnType != this.ColumnData.ColumnType
+			|| this._extentColumns.ColumnCount != this.ColumnData.ColumnCount
+			|| this._extentColumns.AutoHeight != this.ColumnData.AutoHeight
+			|| this._extentColumns.FlowReversed != this.ColumnData.FlowReversed
+			|| this._extentColumns.Width != this.ColumnData.Width || this._extentColumns.Gutter != this.ColumnData.Gutter
+			|| !this._extentColumnHeights.SequenceEqual(this.ColumnData.Heights)
+			|| this._extentMeasuredWidth != this.HorizontalWidth || this._extentMeasuredHeight != this.VerticalHeight
+			|| this._extentRectangleHeight != this.RectangleHeight
+			|| this._extentTextHeight != this.Height || this._extentRectangleWidth != this.RectangleWidth
+			|| this._extentSpacing != this.LineSpacing || this._extentSpacingStyle != this.LineSpacingStyle
+			|| this._extentDirection != this.DrawingDirection || this._extentFont != this.Style.Filename
+			|| this._extentBigFont != this.Style.BigFontFilename || this._extentStyleWidth != this.Style.Width
+			|| this._extentStyleHeight != this.Style.Height || this._extentStyleOblique != this.Style.ObliqueAngle
+			|| this._extentStyleFlags != this.Style.Flags || this._extentMirror != this.Style.MirrorFlag
+			|| this._extentFontFlags != this.Style.TrueType) return false;
+		width = this.HorizontalWidth;
+		height = this.VerticalHeight;
+		return width > 0 && height > 0 && !double.IsInfinity(width) && !double.IsInfinity(height);
+	}
+
 	/// <inheritdoc/>
 	public MText() : base() { }
 
@@ -211,6 +275,8 @@ public partial class MText : Entity, IText
 	/// <inheritdoc/>
 	public override void ApplyTransform(Transform transform)
 	{
+		//The transformed layout must be measured again by a text engine.
+		this._hasMeasuredExtents = false;
 		XYZ newInsert = transform.ApplyTransform(this.InsertPoint);
 		XYZ newNormal = this.transformNormal(transform, this.Normal);
 
@@ -318,7 +384,25 @@ public partial class MText : Entity, IText
 	/// <inheritdoc/>
 	public override BoundingBox GetBoundingBox()
 	{
-		return new BoundingBox(this.InsertPoint);
+		if (this.HasColumns || !this.TryGetMeasuredExtents(out double width, out double height)
+			|| this.AlignmentPoint.GetLength() == 0 || this.Normal.GetLength() == 0)
+			return new BoundingBox(this.InsertPoint);
+		XYZ normal = this.Normal.Normalize();
+		XYZ x = this.AlignmentPoint - normal * this.AlignmentPoint.Dot(normal);
+		if (!(x.GetLength() > MathHelper.Epsilon)) return new BoundingBox(this.InsertPoint);
+		x = x.Normalize();
+		XYZ y = XYZ.Cross(normal, x).Normalize();
+		int attachment = (int)this.AttachmentPoint - 1;
+		if (attachment < 0 || attachment > 8) return new BoundingBox(this.InsertPoint);
+		double left = -width * (attachment % 3) / 2.0;
+		double bottom = height * ((attachment / 3) / 2.0 - 1);
+		return BoundingBox.FromPoints(new[]
+		{
+			this.InsertPoint + x * left + y * bottom,
+			this.InsertPoint + x * (left + width) + y * bottom,
+			this.InsertPoint + x * left + y * (bottom + height),
+			this.InsertPoint + x * (left + width) + y * (bottom + height),
+		});
 	}
 
 	/// <summary>

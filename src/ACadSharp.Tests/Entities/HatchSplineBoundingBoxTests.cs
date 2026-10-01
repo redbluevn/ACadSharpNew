@@ -12,6 +12,26 @@ using Xunit;
 /// </summary>
 public class HatchSplineBoundingBoxTests
 {
+	[Theory]
+	[InlineData(1.0)]
+	[InlineData(0.5)]
+	[InlineData(7.25)]
+	public void TransformUsesPlanarCoordinatesAndPreservesWeights(double weight)
+	{
+		var edge = this.edge(weight);
+		edge.IsRational = true;
+		edge.FitPoints.Add(new XY(3, 4));
+		edge.ApplyTransform(Transform.CreateRotation(XYZ.AxisY, System.Math.PI / 2));
+		foreach (XYZ control in edge.ControlPoints)
+		{
+			Assert.Equal(0, control.X, 9);
+			Assert.Equal(weight, control.Z);
+		}
+		Assert.Equal(4, edge.ControlPoints[1].Y);
+		Assert.Equal(0, edge.FitPoints[0].X, 9);
+		Assert.Equal(4, edge.FitPoints[0].Y);
+	}
+
 	[Fact]
 	public void AWeightIsNotAHeight()
 	{
