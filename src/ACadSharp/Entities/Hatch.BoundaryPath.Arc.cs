@@ -143,10 +143,16 @@ public partial class Hatch
 					}
 				}
 
-				s = new Segment2D(pts.Last().Convert<XY>(), pts.First().Convert<XY>());
-				if (s.TryFindIntersection(line, out intersection))
+				//Only a full curve can close back to its first sample. Closing an open
+				//arc adds a fictitious chord and changes the hatch's inside/outside parity.
+				if (MathHelper.IsEqual(this.StartAngle, this.EndAngle)
+					|| MathHelper.IsEqual(Math.Abs(this.EndAngle - this.StartAngle), MathHelper.TwoPI))
 				{
-					yield return intersection;
+					s = new Segment2D(pts.Last().Convert<XY>(), pts.First().Convert<XY>());
+					if (s.TryFindIntersection(line, out intersection))
+					{
+						yield return intersection;
+					}
 				}
 
 				//TODO: improve the method by calculating the intersection between the line and the arc directly, without the need of generating a list of vertexes.
