@@ -3,10 +3,8 @@
 	<PropertyGroup>
 		<TargetFrameworks>net9.0;net48</TargetFrameworks>
 
-		<!-- Enable the MSTest runner, this is an opt-in feature -->
-		<EnableMSTestRunner>true</EnableMSTestRunner>
-		<!-- We need to produce an executable and not a DLL -->
-		<OutputType Condition="'$(TargetFramework)' == 'net9.0'">Exe"</OutputType>
+		<!-- xUnit tests are discovered by the Visual Studio test adapter. -->
+		<OutputType>Library</OutputType>
 
 		<IsPackable>false</IsPackable>
 		<IsTestProject>true</IsTestProject>

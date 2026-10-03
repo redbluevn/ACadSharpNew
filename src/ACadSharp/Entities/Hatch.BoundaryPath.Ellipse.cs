@@ -113,9 +113,11 @@ public partial class Hatch
 			/// <inheritdoc/>
 			public override void ApplyTransform(Transform transform)
 			{
+				planarSimilarityScale(transform, out bool mirrored);
 				this.Center = transform.ApplyTransform(this.Center.Convert<XYZ>()).Convert<XY>();
 				//The major-axis endpoint is a displacement from Center, not a position.
 				this.MajorAxisEndPoint = (transform.Matrix * new XYZM(this.MajorAxisEndPoint.X, this.MajorAxisEndPoint.Y, 0, 0)).Convert<XY>();
+				if (mirrored) this.CounterClockWise = !this.CounterClockWise;
 			}
 
 			/// <inheritdoc/>

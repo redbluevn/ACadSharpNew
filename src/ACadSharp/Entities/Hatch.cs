@@ -157,39 +157,53 @@ public partial class Hatch : Entity, IOrientable
 	public Hatch() : base() { }
 
 	/// <inheritdoc/>
+	/// <exception cref="System.NotSupportedException">The transform introduces nonuniform scaling, shear, perspective or a degenerate hatch plane.</exception>
 	public override void ApplyTransform(Transform transform)
 	{
-		if (this.IsAssociative)
-		{
-			//Not sure how this effects the hatch
-		}
-
-		var newNormal = this.transformNormal(transform, this.Normal);
-		this.getWorldMatrix(transform, this.Normal, newNormal, out Matrix3 transOW, out Matrix3 transWO);
-		double oldAngle = this._patternAngle;
-		double oldScale = this._patternScale;
+		assertAffineTransform(transform);
+		//Use the same normalized arbitrary-axis basis as GetBoundingBox.
+		Matrix4 toWorld = Matrix4.GetArbitraryAxis(this.Normal);
+		XYZ x = transformVector(transform, toWorld * XYZ.AxisX);
+		XYZ y = transformVector(transform, toWorld * XYZ.AxisY);
+		//Validate before changing paths, seeds or pattern definitions.
+		double scale = similarityScale(x, y);
+		XYZ newNormal = XYZ.Cross(x / scale, y / scale).Normalize();
+		Matrix4 toObject = Matrix4.GetArbitraryAxis(newNormal).Transpose();
+		XYZ origin = toObject * transform.ApplyTransform(toWorld * new XYZ(0, 0, this.Elevation), false);
+		x = toObject * x;
+		y = toObject * y;
+		//Map the old hatch plane to the new OCS. Z is carried separately in Elevation.
+		Matrix4 localMatrix = Matrix4.Identity;
+		localMatrix.M00 = x.X; localMatrix.M01 = x.Y;
+		localMatrix.M10 = y.X; localMatrix.M11 = y.Y;
+		localMatrix.M30 = origin.X; localMatrix.M31 = origin.Y;
+		var local = new Transform(localMatrix);
+		planarSimilarityScale(local, out _);
 
 		foreach (BoundaryPath p in this.Paths)
 		{
-			p.ApplyTransform(transform);
+			p.ApplyTransform(local);
 		}
 		for (int i = 0; i < this.SeedPoints.Count; i++)
 		{
-			this.SeedPoints[i] = transform.ApplyTransform(this.SeedPoints[i].Convert<XYZ>()).Convert<XY>();
+			this.SeedPoints[i] = local.ApplyTransform(this.SeedPoints[i].Convert<XYZ>()).Convert<XY>();
 		}
 
 		XY refAxis = XY.Rotate(XY.AxisX, this._patternAngle);
-		XYZ v = transOW * new XYZ(refAxis.X, refAxis.Y, 0.0);
-		v = (transform.Matrix * new XYZM(v.X, v.Y, v.Z, 0)).Convert<XYZ>();
-		v = transWO * v;
-		XY axis = new XY(v.X, v.Y);
-		this._patternAngle = axis.GetAngle();
-
-		double patScale = axis.GetLength();
-		patScale = MathHelper.IsZero(patScale) ? MathHelper.Epsilon : patScale;
-		this._patternScale = oldScale * patScale;
-
-		this.Pattern?.Update(transform.Translation.Convert<XY>(), this._patternAngle - oldAngle, patScale);
+		this._patternAngle = transformVector(local, refAxis.Convert<XYZ>()).Convert<XY>().GetAngle();
+		this._patternScale *= scale;
+		if (this.Pattern != null)
+		{
+			foreach (HatchPattern.Line line in this.Pattern.Lines)
+			{
+				line.BasePoint = local.ApplyTransform(line.BasePoint.Convert<XYZ>()).Convert<XY>();
+				line.Offset = transformVector(local, line.Offset.Convert<XYZ>()).Convert<XY>();
+				XY direction = XY.Rotate(XY.AxisX, line.Angle);
+				line.Angle = transformVector(local, direction.Convert<XYZ>()).Convert<XY>().GetAngle();
+				line.DashLengths = line.DashLengths.Select(d => d * scale).ToList();
+			}
+		}
+		this.Elevation = origin.Z;
 		this.Normal = newNormal;
 	}
 

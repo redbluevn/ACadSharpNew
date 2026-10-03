@@ -92,33 +92,17 @@ public partial class Hatch
 			/// <inheritdoc/>
 			public override void ApplyTransform(Transform transform)
 			{
+				double scale = planarSimilarityScale(transform, out bool mirrored);
 				bool fullCircle = MathHelper.IsEqual(Math.Abs(this.EndAngle - this.StartAngle), MathHelper.TwoPI);
-				//Radius and endpoint directions are vectors: translation only moves the center.
-				Matrix4 linear = transform.Matrix;
-				linear.M30 = linear.M31 = linear.M32 = 0.0;
+				double sign = this.CounterClockWise ? 1 : -1;
+				XYZ start = transformVector(transform, new XYZ(Math.Cos(sign * this.StartAngle), Math.Sin(sign * this.StartAngle), 0));
+				XYZ end = transformVector(transform, new XYZ(Math.Cos(sign * this.EndAngle), Math.Sin(sign * this.EndAngle), 0));
 				this.Center = transform.ApplyTransform(this.Center.Convert<XYZ>()).Convert<XY>();
-				this.Radius = (linear * new XYZ(this.Radius, 0.0, 0.0)).GetLength();
-
-				if (!this.CounterClockWise)
-				{
-					this.StartAngle = 0.0 - this.StartAngle;
-					this.EndAngle = 0.0 - this.EndAngle;
-				}
-
-				XYZ vstart = new XYZ(Math.Cos(StartAngle), Math.Sin(StartAngle), 0);
-				XYZ vend = new XYZ(Math.Cos(EndAngle), Math.Sin(EndAngle), 0);
-
-				vstart = linear * vstart;
-				this.StartAngle = Math.Atan2(vstart.Y, vstart.X);
-
-				vend = linear * vend;
-				this.EndAngle = Math.Atan2(vend.Y, vend.X);
-
-				if (!this.CounterClockWise)
-				{
-					this.StartAngle = 0.0 - this.StartAngle;
-					this.EndAngle = 0.0 - this.EndAngle;
-				}
+				this.Radius *= scale;
+				if (mirrored) this.CounterClockWise = !this.CounterClockWise;
+				sign = this.CounterClockWise ? 1 : -1;
+				this.StartAngle = positiveAngle(sign * Math.Atan2(start.Y, start.X));
+				this.EndAngle = positiveAngle(sign * Math.Atan2(end.Y, end.X));
 				//atan2 maps both endpoints of a full turn to the same angle.
 				if (fullCircle) this.EndAngle = this.StartAngle + MathHelper.TwoPI;
 			}
