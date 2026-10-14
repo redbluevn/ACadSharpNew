@@ -64,7 +64,15 @@ namespace ACadSharp.IO.Templates
 				this.CadObject.LineTypeExt2 = linetTypeEx2;
 			}
 
-			if (this.getTableReference(builder, this.DIMLDRBLK, this.DIMBL_Name, out BlockRecord leaderArrow))
+			// DIMBLK is the arrowhead both ends use while DIMSAH is off: the readers stored it and nothing
+			// assigned it, so every style came back with the default closed filled arrow. Group 5 is
+			// DIMBLK's obsolete name, not the leader's.
+			if (this.getTableReference(builder, this.DIMBLK, this.DIMBL_Name, out BlockRecord arrowBlock))
+			{
+				this.CadObject.ArrowBlock = arrowBlock;
+			}
+
+			if (this.getTableReference(builder, this.DIMLDRBLK, null, out BlockRecord leaderArrow))
 			{
 				this.CadObject.LeaderArrow = leaderArrow;
 			}
